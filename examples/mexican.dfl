@@ -1,0 +1,12 @@
+# =================================================================
+#
+# Copyright (C) 2018 Spatial Current, Inc. - All Rights Reserved
+# Released as open source under the MIT License.  See LICENSE file.
+#
+# =================================================================
+
+filter(@, "((@properties?.cusine ilike mexican) or (@properties?.name ilike %taco%) or (@properties?.name ilike %burrito%)) and (@properties?.name != null)") |
+map(@, "@properties?.name") |
+array(set(@)) |
+sort(@) |
+limit(@, 5)

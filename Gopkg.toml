@@ -1,0 +1,3 @@
+[[constraint]]
+  name = "github.com/colinmarc/hdfs"
+  revision = "279cc88949e23da3364c94a9ee440f5beee3ca65"
