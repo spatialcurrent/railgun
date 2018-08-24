@@ -77,6 +77,7 @@ func main() {
 	var max_count int
 
 	var version bool
+	var verbose bool
 	var help bool
 
 	flag.StringVar(&aws_default_region, "aws_default_region", "", "Defaults to value of environment variable AWS_DEFAULT_REGION.")
@@ -101,6 +102,7 @@ func main() {
 
 	flag.IntVar(&max_count, "max", -1, "The maximum number of objects to output")
 	flag.BoolVar(&version, "version", false, "Prints version to stdout.")
+	flag.BoolVar(&verbose, "verbose", false, "Prints verbose output.")
 	flag.BoolVar(&help, "help", false, "Print help.")
 
 	flag.Parse()
@@ -225,6 +227,14 @@ func main() {
 			log.Fatal(errors.Wrap(err, "Error parsing dfl node."))
 		}
 		dfl_node = n.Compile()
+	}
+
+	if verbose && dfl_node != nil {
+		dfl_node_yaml, err := gss.Serialize(dfl_node.Map(), "yaml")
+		if err != nil {
+			log.Fatal(errors.Wrap(err, "error dumping dfl_node as yaml to stdout"))
+		}
+		fmt.Println(dfl_node_yaml)
 	}
 
 	input_object, _ := gss.NewObject(input_string, input_format)
