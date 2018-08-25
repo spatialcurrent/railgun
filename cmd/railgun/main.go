@@ -313,8 +313,14 @@ func main() {
 	}
 
 	if output_uri == "stdout" {
+		if len(output_passphrase) > 0 {
+			log.Fatal("encryption only works with file output")
+		}
 		fmt.Println(output_string)
 	} else if output_uri == "stderr" {
+		if len(output_passphrase) > 0 {
+			log.Fatal("encryption only works with file output")
+		}
 		fmt.Fprintf(os.Stderr, output_string)
 	} else {
 
