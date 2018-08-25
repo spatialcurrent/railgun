@@ -9,8 +9,14 @@ package main
 
 import (
 	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
+	"golang.org/x/crypto/argon2"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -37,6 +43,7 @@ import (
 
 var GO_RAILGUN_COMPRESSION_ALGORITHMS = []string{"none", "bzip2", "gzip", "snappy"}
 var GO_RAILGUN_FORMATS = []string{"bson", "csv", "tsv", "hcl", "hcl2", "json", "jsonl", "properties", "toml", "yaml"}
+var GO_RAILGUN_SALT = []byte("4F56C8C88B38CD8CD96BF8A9724F4BFE")
 
 func printUsage() {
 	fmt.Println("Usage: railgun -input_format INPUT_FORMAT -o OUTPUT_FORMAT [-input_uri INPUT_URI] [-input_compression [bzip2|gzip|snappy]] [-h HEADER] [-c COMMENT] [-object_path PATH] [-dfl_exp DFL_EXPRESSION] [-dfl_file DFL_FILE] [-output_path OUTPUT_PATH] [-max MAX_COUNT]")
@@ -64,6 +71,7 @@ func main() {
 	var input_uri string
 	var input_compression string
 	var input_format string
+	var input_passphrase string
 	var input_header_text string
 	var input_comment string
 	var input_reader_buffer_size int
@@ -73,6 +81,7 @@ func main() {
 
 	var output_uri string
 	var output_format string
+	var output_passphrase string
 
 	var max_count int
 
@@ -92,10 +101,12 @@ func main() {
 	flag.StringVar(&input_format, "input_format", "", "The input format: "+strings.Join(GO_RAILGUN_FORMATS, ", "))
 	flag.StringVar(&input_header_text, "h", "", "The input header if the stdin input has no header.")
 	flag.StringVar(&input_comment, "c", "", "The input comment character, e.g., #.  Commented lines are not sent to output.")
+	flag.StringVar(&input_passphrase, "input_passphrase", "", "The input passphrase.")
 	flag.IntVar(&input_reader_buffer_size, "input_reader_buffer_size", 4096, "The input reader buffer size") // default from https://golang.org/src/bufio/bufio.go
 
 	flag.StringVar(&output_uri, "output_uri", "stdout", "The output uri")
 	flag.StringVar(&output_format, "output_format", "", "The output format: "+strings.Join(GO_RAILGUN_FORMATS, ", "))
+	flag.StringVar(&output_passphrase, "output_passphrase", "", "The output passphrase.")
 
 	flag.StringVar(&dfl_exp, "dfl_exp", "", "Process using dfl expression")
 	flag.StringVar(&dfl_file, "dfl_file", "", "Process using dfl file.")
@@ -145,12 +156,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	if len(output_format) == 0 {
-		fmt.Println("Error: Provided no -output_format.")
-		fmt.Println("Run \"railgun -help\" for more information.")
-		os.Exit(1)
-	}
-
 	var aws_session *session.Session
 	var s3_client *s3.S3
 	var hdfs_client *hdfs.Client
@@ -189,85 +194,122 @@ func main() {
 				}
 			}
 		}
-		if len(input_format) == 0 {
+		if len(input_format) == 0 && len(output_format) > 0 {
 			fmt.Println("Error: Provided no -input_format and could not infer from resource.")
 			fmt.Println("Run \"railgun -help\" for more information.")
 			os.Exit(1)
 		}
 	}
 
+	if len(input_format) > 0 && len(output_format) == 0 {
+		fmt.Println("Error: Provided no -output_format.")
+		fmt.Println("Run \"railgun -help\" for more information.")
+		os.Exit(1)
+	}
+
 	input_bytes, err := input_reader.ReadAll()
 	if err != nil {
 		log.Fatal(errors.Wrap(err, "Error reading from resource"))
 	}
-	input_string := string(input_bytes)
 
-	input_header := make([]string, 0)
-	if len(input_header_text) > 0 {
-		input_header = strings.Split(input_header_text, ",")
-	}
+	input_string := ""
+	if len(input_passphrase) > 0 {
 
-	funcs := dfl.NewFuntionMapWithDefaults()
-
-	var dfl_node dfl.Node
-	if len(dfl_file) > 0 {
-		f, _, err := reader.OpenResource(dfl_file, "none", 4096, false, nil, nil)
+		salt := make([]byte, hex.DecodedLen(len(GO_RAILGUN_SALT)))
+		_, err := hex.Decode(salt, GO_RAILGUN_SALT)
 		if err != nil {
-			log.Fatal(errors.Wrap(err, "Error opening dfl file"))
+			log.Fatal(errors.Wrap(err, "invalid salt "+string(GO_RAILGUN_SALT)))
 		}
-		content, err := f.ReadAll()
+		key := argon2.Key([]byte(input_passphrase), salt, 3, 32*1024, 4, 32)
+		block, err := aes.NewCipher(key)
 		if err != nil {
-			log.Fatal(errors.Wrap(err, "Error reading all from dfl file"))
+			panic(err)
 		}
-		dfl_exp = strings.TrimSpace(dfl.RemoveComments(string(content)))
-	}
-	if len(dfl_exp) > 0 {
-		n, err := dfl.Parse(dfl_exp)
-		if err != nil {
-			log.Fatal(errors.Wrap(err, "Error parsing dfl node."))
+		ciphertext := input_bytes
+		if len(ciphertext) < aes.BlockSize {
+			panic("Text is too short")
 		}
-		dfl_node = n.Compile()
-	}
-
-	if verbose && dfl_node != nil {
-		dfl_node_yaml, err := gss.Serialize(dfl_node.Map(), "yaml")
-		if err != nil {
-			log.Fatal(errors.Wrap(err, "error dumping dfl_node as yaml to stdout"))
-		}
-		fmt.Println(dfl_node_yaml)
-	}
-
-	input_object, _ := gss.NewObject(input_string, input_format)
-	switch input_object_typed := input_object.(type) {
-	case []map[string]interface{}:
-		err = gss.Deserialize(input_string, input_format, input_header, input_comment, &input_object_typed)
-		if err != nil {
-			log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
-		}
-		input_object = input_object_typed // This is a critical line, otherwise the type information is lost.
-	default:
-		err = gss.Deserialize(input_string, input_format, input_header, input_comment, &input_object)
-		if err != nil {
-			log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
-		}
-	}
-
-	var output interface{}
-	if dfl_node != nil {
-		o, err := dfl_node.Evaluate(input_object, funcs)
-		if err != nil {
-			log.Fatal(errors.Wrap(err, "error processing"))
-		}
-		output = o
+		iv := ciphertext[:aes.BlockSize]
+		ciphertext = ciphertext[aes.BlockSize:]
+		stream := cipher.NewCFBDecrypter(block, iv)
+		stream.XORKeyStream(ciphertext, ciphertext)
+		input_string = string(ciphertext)
 	} else {
-		output = input_object
+		input_string = string(input_bytes)
 	}
 
-	output = gss.StringifyMapKeys(output)
+	output_string := ""
+	if len(output_format) > 0 {
 
-	output_string, err := gss.Serialize(output, output_format)
-	if err != nil {
-		log.Fatal(errors.Wrap(err, "Error converting"))
+		input_header := make([]string, 0)
+		if len(input_header_text) > 0 {
+			input_header = strings.Split(input_header_text, ",")
+		}
+
+		funcs := dfl.NewFuntionMapWithDefaults()
+
+		var dfl_node dfl.Node
+		if len(dfl_file) > 0 {
+			f, _, err := reader.OpenResource(dfl_file, "none", 4096, false, nil, nil)
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "Error opening dfl file"))
+			}
+			content, err := f.ReadAll()
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "Error reading all from dfl file"))
+			}
+			dfl_exp = strings.TrimSpace(dfl.RemoveComments(string(content)))
+		}
+		if len(dfl_exp) > 0 {
+			n, err := dfl.Parse(dfl_exp)
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "Error parsing dfl node."))
+			}
+			dfl_node = n.Compile()
+		}
+
+		if verbose && dfl_node != nil {
+			dfl_node_yaml, err := gss.Serialize(dfl_node.Map(), "yaml")
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "error dumping dfl_node as yaml to stdout"))
+			}
+			fmt.Println(dfl_node_yaml)
+		}
+
+		input_object, _ := gss.NewObject(input_string, input_format)
+		switch input_object_typed := input_object.(type) {
+		case []map[string]interface{}:
+			err = gss.Deserialize(input_string, input_format, input_header, input_comment, &input_object_typed)
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
+			}
+			input_object = input_object_typed // This is a critical line, otherwise the type information is lost.
+		default:
+			err = gss.Deserialize(input_string, input_format, input_header, input_comment, &input_object)
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
+			}
+		}
+
+		var output interface{}
+		if dfl_node != nil {
+			o, err := dfl_node.Evaluate(input_object, funcs)
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "error processing"))
+			}
+			output = o
+		} else {
+			output = input_object
+		}
+
+		output = gss.StringifyMapKeys(output)
+
+		output_string, err = gss.Serialize(output, output_format)
+		if err != nil {
+			log.Fatal(errors.Wrap(err, "Error converting"))
+		}
+	} else {
+		output_string = input_string
 	}
 
 	if output_uri == "stdout" {
@@ -275,19 +317,52 @@ func main() {
 	} else if output_uri == "stderr" {
 		fmt.Fprintf(os.Stderr, output_string)
 	} else {
+
 		output_file, err := os.OpenFile(output_uri, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			log.Fatal(errors.Wrap(err, "error opening output file"))
 		}
 		w := bufio.NewWriter(output_file)
-		_, err = w.WriteString(output_string + "\n")
-		if err != nil {
-			log.Fatal(errors.Wrap(err, "Error writing string to output file"))
+
+		if len(output_passphrase) > 0 {
+
+			output_salt := make([]byte, hex.DecodedLen(len(GO_RAILGUN_SALT)))
+			_, err := hex.Decode(output_salt, GO_RAILGUN_SALT)
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "invalid salt "+string(GO_RAILGUN_SALT)))
+			}
+			output_key := argon2.Key([]byte(output_passphrase), output_salt, 3, 32*1024, 4, 32)
+			output_block, err := aes.NewCipher(output_key)
+			if err != nil {
+				panic(err)
+			}
+			output_plaintext := []byte(output_string + "\n")
+			output_ciphertext := make([]byte, aes.BlockSize+len(output_plaintext))
+			iv := output_ciphertext[:aes.BlockSize]
+			if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+				log.Fatal(errors.Wrap(err, "error generating iv"))
+			}
+
+			output_stream := cipher.NewCFBEncrypter(output_block, iv)
+			output_stream.XORKeyStream(output_ciphertext[aes.BlockSize:], output_plaintext)
+
+			_, err = w.Write(output_ciphertext)
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "Error writing encrypted data to output file"))
+			}
+
+		} else {
+			_, err = w.WriteString(output_string + "\n")
+			if err != nil {
+				log.Fatal(errors.Wrap(err, "Error writing string to output file"))
+			}
 		}
+
 		err = w.Flush()
 		if err != nil {
 			log.Fatal(errors.Wrap(err, "Error flushing output to output file"))
 		}
+
 		err = output_file.Close()
 		if err != nil {
 			log.Fatal(errors.Wrap(err, "Error closing output file."))

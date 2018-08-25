@@ -30,7 +30,7 @@ script:
   #- gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet ./plugins/railgun/
   - gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet ./cmd/railgun/
   - gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet ./cmd/railgun.js/
-  - cd gss
+  - cd railgun
   - go fmt
   - cd ./../cmd/railgun
   - go fmt
