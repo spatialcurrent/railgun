@@ -43,7 +43,7 @@ import (
 
 var GO_RAILGUN_COMPRESSION_ALGORITHMS = []string{"none", "bzip2", "gzip", "snappy"}
 var GO_RAILGUN_FORMATS = []string{"bson", "csv", "tsv", "hcl", "hcl2", "json", "jsonl", "properties", "toml", "yaml"}
-var GO_RAILGUN_SALT = []byte("4F56C8C88B38CD8CD96BF8A9724F4BFE")
+var GO_RAILGUN_DEFAULT_SALT = "4F56C8C88B38CD8CD96BF8A9724F4BFE"
 
 func printUsage() {
 	fmt.Println("Usage: railgun -input_format INPUT_FORMAT -o OUTPUT_FORMAT [-input_uri INPUT_URI] [-input_compression [bzip2|gzip|snappy]] [-h HEADER] [-c COMMENT] [-object_path PATH] [-dfl_exp DFL_EXPRESSION] [-dfl_file DFL_FILE] [-output_path OUTPUT_PATH] [-max MAX_COUNT]")
@@ -60,6 +60,21 @@ func connect_to_aws(aws_access_key_id string, aws_secret_access_key string, aws_
 	return aws_session
 }
 
+func create_cipher(salt_string string, passphrase_string string) (cipher.Block, error) {
+	salt_bytes := []byte(salt_string)
+	salt := make([]byte, hex.DecodedLen(len(salt_bytes)))
+	_, err := hex.Decode(salt, salt_bytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid salt "+salt_string)
+	}
+	key := argon2.Key([]byte(passphrase_string), salt, 3, 32*1024, 4, 32)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return block, errors.Wrap(err, "error creating new AES256 cipher")
+	}
+	return block, nil
+}
+
 func main() {
 
 	var aws_default_region string
@@ -71,7 +86,8 @@ func main() {
 	var input_uri string
 	var input_compression string
 	var input_format string
-	var input_passphrase string
+	var input_passphrase_string string
+	var input_salt_string string
 	var input_header_text string
 	var input_comment string
 	var input_reader_buffer_size int
@@ -80,8 +96,10 @@ func main() {
 	var dfl_file string
 
 	var output_uri string
+	var output_compression string
 	var output_format string
-	var output_passphrase string
+	var output_passphrase_string string
+	var output_salt_string string
 
 	var max_count int
 
@@ -101,12 +119,16 @@ func main() {
 	flag.StringVar(&input_format, "input_format", "", "The input format: "+strings.Join(GO_RAILGUN_FORMATS, ", "))
 	flag.StringVar(&input_header_text, "h", "", "The input header if the stdin input has no header.")
 	flag.StringVar(&input_comment, "c", "", "The input comment character, e.g., #.  Commented lines are not sent to output.")
-	flag.StringVar(&input_passphrase, "input_passphrase", "", "The input passphrase.")
+	flag.StringVar(&input_passphrase_string, "input_passphrase", "", "The input passphrase.")
+	flag.StringVar(&input_salt_string, "input_salt", GO_RAILGUN_DEFAULT_SALT, "The input salt as hexidecimal.")
+
 	flag.IntVar(&input_reader_buffer_size, "input_reader_buffer_size", 4096, "The input reader buffer size") // default from https://golang.org/src/bufio/bufio.go
 
 	flag.StringVar(&output_uri, "output_uri", "stdout", "The output uri")
+	flag.StringVar(&output_compression, "output_compression", "none", "The output compression: "+strings.Join(GO_RAILGUN_COMPRESSION_ALGORITHMS, ", "))
 	flag.StringVar(&output_format, "output_format", "", "The output format: "+strings.Join(GO_RAILGUN_FORMATS, ", "))
-	flag.StringVar(&output_passphrase, "output_passphrase", "", "The output passphrase.")
+	flag.StringVar(&output_passphrase_string, "output_passphrase", "", "The output passphrase.")
+	flag.StringVar(&output_salt_string, "output_salt", GO_RAILGUN_DEFAULT_SALT, "The output salt as hexidecimal.")
 
 	flag.StringVar(&dfl_exp, "dfl_exp", "", "Process using dfl expression")
 	flag.StringVar(&dfl_file, "dfl_file", "", "Process using dfl file.")
@@ -176,6 +198,17 @@ func main() {
 		log.Fatal(errors.Wrap(err, "error opening resource from uri "+input_uri))
 	}
 
+	if len(output_format) == 0 || len(output_compression) == 0 {
+		_, output_path := reader.SplitUri(output_uri)
+		output_format_guess, output_compression_guess := railgun.InferFormatAndCompression(output_path)
+		if len(output_format) == 0 {
+			output_format = output_format_guess
+		}
+		if len(output_compression) == 0 {
+			output_compression = output_compression_guess
+		}
+	}
+
 	if len(input_format) == 0 {
 		if input_metadata != nil {
 			if len(input_metadata.ContentType) > 0 {
@@ -188,10 +221,15 @@ func main() {
 					input_format = "toml"
 				}
 			}
+		}
+		if len(input_format) == 0 || len(input_compression) == 0 {
+			_, input_path := reader.SplitUri(input_uri)
+			input_format_guess, input_compression_guess := railgun.InferFormatAndCompression(input_path)
 			if len(input_format) == 0 {
-				if strings.HasSuffix(input_uri, ".geojson") || strings.HasSuffix(input_uri, ".json") {
-					input_format = "json"
-				}
+				input_format = input_format_guess
+			}
+			if len(input_compression) == 0 {
+				input_compression = input_compression_guess
 			}
 		}
 		if len(input_format) == 0 && len(output_format) > 0 {
@@ -199,6 +237,11 @@ func main() {
 			fmt.Println("Run \"railgun -help\" for more information.")
 			os.Exit(1)
 		}
+	}
+
+	if verbose {
+		fmt.Println("Input Format:", input_format)
+		fmt.Println("Output Format:", output_format)
 	}
 
 	if len(input_format) > 0 && len(output_format) == 0 {
@@ -213,15 +256,8 @@ func main() {
 	}
 
 	input_string := ""
-	if len(input_passphrase) > 0 {
-
-		salt := make([]byte, hex.DecodedLen(len(GO_RAILGUN_SALT)))
-		_, err := hex.Decode(salt, GO_RAILGUN_SALT)
-		if err != nil {
-			log.Fatal(errors.Wrap(err, "invalid salt "+string(GO_RAILGUN_SALT)))
-		}
-		key := argon2.Key([]byte(input_passphrase), salt, 3, 32*1024, 4, 32)
-		block, err := aes.NewCipher(key)
+	if len(input_passphrase_string) > 0 {
+		block, err := create_cipher(input_salt_string, input_passphrase_string)
 		if err != nil {
 			panic(err)
 		}
@@ -276,24 +312,17 @@ func main() {
 			fmt.Println(dfl_node_yaml)
 		}
 
-		input_object, _ := gss.NewObject(input_string, input_format)
-		switch input_object_typed := input_object.(type) {
-		case []map[string]interface{}:
-			err = gss.Deserialize(input_string, input_format, input_header, input_comment, &input_object_typed)
-			if err != nil {
-				log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
-			}
-			input_object = input_object_typed // This is a critical line, otherwise the type information is lost.
-		default:
-			err = gss.Deserialize(input_string, input_format, input_header, input_comment, &input_object)
-			if err != nil {
-				log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
-			}
+		input_type, err := gss.GetType(input_string, input_format)
+		if err != nil {
+			log.Fatal(errors.Wrap(err, "error geting type for input"))
 		}
-
+		input_object, err := gss.Deserialize(input_string, input_format, input_header, input_comment, input_type, verbose)
+		if err != nil {
+			log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
+		}
 		var output interface{}
 		if dfl_node != nil {
-			o, err := dfl_node.Evaluate(input_object, funcs)
+			o, err := dfl_node.Evaluate(input_object, funcs, []string{"'", "\"", "`"})
 			if err != nil {
 				log.Fatal(errors.Wrap(err, "error processing"))
 			}
@@ -313,12 +342,12 @@ func main() {
 	}
 
 	if output_uri == "stdout" {
-		if len(output_passphrase) > 0 {
+		if len(output_passphrase_string) > 0 {
 			log.Fatal("encryption only works with file output")
 		}
 		fmt.Println(output_string)
 	} else if output_uri == "stderr" {
-		if len(output_passphrase) > 0 {
+		if len(output_passphrase_string) > 0 {
 			log.Fatal("encryption only works with file output")
 		}
 		fmt.Fprintf(os.Stderr, output_string)
@@ -330,15 +359,9 @@ func main() {
 		}
 		w := bufio.NewWriter(output_file)
 
-		if len(output_passphrase) > 0 {
+		if len(output_passphrase_string) > 0 {
 
-			output_salt := make([]byte, hex.DecodedLen(len(GO_RAILGUN_SALT)))
-			_, err := hex.Decode(output_salt, GO_RAILGUN_SALT)
-			if err != nil {
-				log.Fatal(errors.Wrap(err, "invalid salt "+string(GO_RAILGUN_SALT)))
-			}
-			output_key := argon2.Key([]byte(output_passphrase), output_salt, 3, 32*1024, 4, 32)
-			output_block, err := aes.NewCipher(output_key)
+			output_block, err := create_cipher(output_salt_string, output_passphrase_string)
 			if err != nil {
 				panic(err)
 			}

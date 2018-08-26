@@ -91,27 +91,17 @@ func Process(in interface{}, options *js.Object) interface{} {
 
 	switch in.(type) {
 	case string:
-		input_object, err := gss.NewObject(in.(string), input_format)
+		input_type, err := gss.GetType(in.(string), input_format)
 		if err != nil {
-			console.Log(errors.Wrap(err, "error creating new object for format "+input_format))
+			console.Error(errors.Wrap(err, "error geting type for input").Error())
 			return ""
 		}
-		switch input_object_typed := input_object.(type) {
-		case []map[string]interface{}:
-			err = gss.Deserialize(in.(string), input_format, input_header, input_comment, &input_object_typed)
-			if err != nil {
-				console.Log(errors.Wrap(err, "error deserializing input using format "+input_format).Error())
-				return ""
-			}
-			ctx = input_object_typed // This is a critical line, otherwise the type information is lost.
-		default:
-			err = gss.Deserialize(in.(string), input_format, input_header, input_comment, &input_object)
-			if err != nil {
-				console.Log(errors.Wrap(err, "error deserializing input using format "+input_format).Error())
-				return ""
-			}
-			ctx = input_object
+		input_object, err := gss.Deserialize(in.(string), input_format, input_header, input_comment, input_type, false)
+		if err != nil {
+			console.Error(errors.Wrap(err, "error deserializing input using format "+input_format).Error())
+			return ""
 		}
+		ctx = input_object
 	case *js.Object:
 		ctx = in.(*js.Object).Interface()
 	case map[string]interface{}:
@@ -137,7 +127,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 	if len(dfl_exp) > 0 {
 		n, err := dfl.Parse(dfl_exp)
 		if err != nil {
-			console.Log(errors.Wrap(err, "Error parsing dfl node.").Error())
+			console.Error(errors.Wrap(err, "Error parsing dfl node.").Error())
 			return ""
 		}
 		dfl_node = n.Compile()
@@ -145,9 +135,9 @@ func Process(in interface{}, options *js.Object) interface{} {
 
 	var output interface{}
 	if dfl_node != nil {
-		o, err := dfl_node.Evaluate(ctx, dfl.NewFuntionMapWithDefaults())
+		o, err := dfl_node.Evaluate(ctx, dfl.NewFuntionMapWithDefaults(), []string{"\"", "'", "`"})
 		if err != nil {
-			console.Log(errors.Wrap(err, "error processing").Error())
+			console.Error(errors.Wrap(err, "error processing").Error())
 			return ""
 		}
 		output = o
@@ -160,7 +150,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 	if len(output_format) > 0 {
 		output_string, err := gss.Serialize(output, output_format)
 		if err != nil {
-			console.Log(errors.Wrap(err, "Error converting to output format "+output_format).Error())
+			console.Error(errors.Wrap(err, "Error converting to output format "+output_format).Error())
 			return ""
 		}
 		return output_string

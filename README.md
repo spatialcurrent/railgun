@@ -82,6 +82,16 @@ const pipeline = ["filter(@features, '(@properties?.tsunami != null) and (@prope
 })
 ```
 
+**Encrypt as Yaml / Decrypt as JSON**
+
+```
+# Encrypt secrets.yml and output to secrets.yml.enc
+read -s -p 'Password: ' password && echo && railgun_linux_amd64 -input_uri secrets.yml -output_uri secrets.yml.enc -output_passphrase $password
+...
+# Decrypt secrets.yml.enc and output to stdout
+read -s -p 'Password: ' password && echo && railgun_linux_amd64 -input_uri secrets.yml.enc -input_passphrase $password -output_format json
+```
+
 # Building
 
 **CLI**
