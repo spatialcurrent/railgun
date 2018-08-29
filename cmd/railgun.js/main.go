@@ -20,7 +20,9 @@ import (
 )
 
 import (
+	dfljs "github.com/spatialcurrent/go-dfl/cmd/dfl.js"
 	"github.com/spatialcurrent/go-dfl/dfl"
+	gssjs "github.com/spatialcurrent/go-simple-serializer/cmd/gss.js"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/railgun/railgun"
 )
@@ -34,9 +36,22 @@ var GO_RAILGUN_COMPRESSION_ALGORITHMS = []string{"none", "gzip", "snappy"}
 var GO_RAILGUN_FORMATS = []string{"csv", "tsv", "hcl", "hcl2", "json", "jsonl", "properties", "toml", "yaml"}
 
 func main() {
+
 	js.Global.Set("railgun", map[string]interface{}{
 		"version": railgun.VERSION,
 		"process": Process,
+		"dfl": map[string]interface{}{
+			"version":        dfl.VERSION,
+			"Parse":          dfljs.Parse,
+			"EvaluateBool":   dfljs.EvaluateBool,
+			"EvaluateInt":    dfljs.EvaluateInt,
+			"EvaluateFloat":  dfljs.EvaluateFloat64,
+			"EvaluateString": dfljs.EvaluateString,
+		},
+		"gss": map[string]interface{}{
+			"version": gss.VERSION,
+			"convert": gssjs.Convert,
+		},
 	})
 }
 
@@ -106,8 +121,13 @@ func Process(in interface{}, options *js.Object) interface{} {
 		ctx = in.(*js.Object).Interface()
 	case map[string]interface{}:
 		ctx = in.(map[string]interface{})
+	case []interface{}:
+		ctx = in.([]interface{})
+	case []map[string]interface{}:
+		ctx = in.([]map[string]interface{})
 	default:
-		console.Log("Unknown input type", fmt.Sprint(reflect.TypeOf(in)))
+		console.Error("Unknown input type", fmt.Sprint(reflect.TypeOf(in)))
+		return ""
 	}
 
 	if v, ok := m["dfl"]; ok {

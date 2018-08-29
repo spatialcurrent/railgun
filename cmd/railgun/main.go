@@ -252,18 +252,18 @@ func main() {
 
 	input_bytes, err := input_reader.ReadAll()
 	if err != nil {
-		log.Fatal(errors.Wrap(err, "Error reading from resource"))
+		log.Fatal(errors.New("error reading from resource"))
 	}
 
 	input_string := ""
 	if len(input_passphrase_string) > 0 {
 		block, err := create_cipher(input_salt_string, input_passphrase_string)
 		if err != nil {
-			panic(err)
+			log.Fatal(errors.New("error creating cipher for input passphrase"))
 		}
 		ciphertext := input_bytes
 		if len(ciphertext) < aes.BlockSize {
-			panic("Text is too short")
+			log.Fatal(errors.New("cipher text is too short: cipher text is shorter than the AES block size."))
 		}
 		iv := ciphertext[:aes.BlockSize]
 		ciphertext = ciphertext[aes.BlockSize:]
@@ -285,6 +285,7 @@ func main() {
 		funcs := dfl.NewFuntionMapWithDefaults()
 
 		var dfl_node dfl.Node
+
 		if len(dfl_file) > 0 {
 			f, _, err := reader.OpenResource(dfl_file, "none", 4096, false, nil, nil)
 			if err != nil {
@@ -296,6 +297,7 @@ func main() {
 			}
 			dfl_exp = strings.TrimSpace(dfl.RemoveComments(string(content)))
 		}
+
 		if len(dfl_exp) > 0 {
 			n, err := dfl.Parse(dfl_exp)
 			if err != nil {
@@ -316,10 +318,12 @@ func main() {
 		if err != nil {
 			log.Fatal(errors.Wrap(err, "error geting type for input"))
 		}
+		
 		input_object, err := gss.Deserialize(input_string, input_format, input_header, input_comment, input_type, verbose)
 		if err != nil {
 			log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
 		}
+		
 		var output interface{}
 		if dfl_node != nil {
 			o, err := dfl_node.Evaluate(input_object, funcs, []string{"'", "\"", "`"})
@@ -363,7 +367,7 @@ func main() {
 
 			output_block, err := create_cipher(output_salt_string, output_passphrase_string)
 			if err != nil {
-				panic(err)
+				log.Fatal(errors.New("error creating cipher for output passphrase"))
 			}
 			output_plaintext := []byte(output_string + "\n")
 			output_ciphertext := make([]byte, aes.BlockSize+len(output_plaintext))
