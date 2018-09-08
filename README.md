@@ -9,9 +9,13 @@
 - [go-simple-serializer](https://github.com/spatialcurrent/go-simple-serializer) (GSS) for reading/writing objects to standard formats, and
 - [go-dfl](https://github.com/spatialcurrent/go-dfl) for filtering and transforming data.
 
+**Railgun** uses the **Dynamic Filter Language** through **go-dfl**.  See the `*_test` files in the [dfl](https://github.com/spatialcurrent/go-dfl/tree/master/dfl) source folder on GitHub for comprehensive examples of the syntax.
+
 go-reader can read from `stdin`, `http/https`, the local filesystem, [AWS S3](https://aws.amazon.com/s3/), and [HDFS](https://hortonworks.com/apache/hdfs/).
 
 go-simple-serializer (GSS) supports `bson`, `csv`, `tsv`, `hcl`, `hcl2`, `json`, `jsonl`, `properties`, `toml`, `yaml`.  `hcl` and `hcl2` implementation is fragile and very much in `alpha`.
+
+For an interactive demo, see the [railgun notebook](https://beta.observablehq.com/@pjdufour/railgun) on [ObservableHQ](http://observablehq.com). It is very heavy, so only use WiFi.
 
 # Usage
 

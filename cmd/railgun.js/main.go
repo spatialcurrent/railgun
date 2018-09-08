@@ -5,7 +5,7 @@
 //
 // =================================================================
 
-// railgun.js is the Javascript version of Railgun.
+// railgun.js is the Javascript package for Railgun.
 //
 package main
 
@@ -20,10 +20,10 @@ import (
 )
 
 import (
-	dfljs "github.com/spatialcurrent/go-dfl/cmd/dfl.js"
 	"github.com/spatialcurrent/go-dfl/dfl"
-	gssjs "github.com/spatialcurrent/go-simple-serializer/cmd/gss.js"
+	"github.com/spatialcurrent/go-dfl/dfljs"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/go-simple-serializer/gssjs"
 	"github.com/spatialcurrent/railgun/railgun"
 )
 
@@ -31,9 +31,6 @@ import (
 	"github.com/gopherjs/gopherjs/js"
 	"honnef.co/go/js/console"
 )
-
-var GO_RAILGUN_COMPRESSION_ALGORITHMS = []string{"none", "gzip", "snappy"}
-var GO_RAILGUN_FORMATS = []string{"csv", "tsv", "hcl", "hcl2", "json", "jsonl", "properties", "toml", "yaml"}
 
 func main() {
 
@@ -49,8 +46,11 @@ func main() {
 			"EvaluateString": dfljs.EvaluateString,
 		},
 		"gss": map[string]interface{}{
-			"version": gss.VERSION,
-			"convert": gssjs.Convert,
+			"version":     gss.VERSION,
+			"formats":     gss.Formats,
+			"convert":     gssjs.Convert,
+			"deserialize": gssjs.Deserialize,
+			"serialize":   gssjs.Serialize,
 		},
 	})
 }
@@ -147,7 +147,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 	if len(dfl_exp) > 0 {
 		n, err := dfl.Parse(dfl_exp)
 		if err != nil {
-			console.Error(errors.Wrap(err, "Error parsing dfl node.").Error())
+			console.Error(errors.Wrap(err, "Error parsing DFL node.").Error())
 			return ""
 		}
 		dfl_node = n.Compile()
@@ -155,7 +155,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 
 	var output interface{}
 	if dfl_node != nil {
-		o, err := dfl_node.Evaluate(ctx, dfl.NewFuntionMapWithDefaults(), []string{"\"", "'", "`"})
+		_, o, err := dfl_node.Evaluate(map[string]interface{}{}, ctx, dfl.NewFuntionMapWithDefaults(), []string{"\"", "'", "`"})
 		if err != nil {
 			console.Error(errors.Wrap(err, "error processing").Error())
 			return ""

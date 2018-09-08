@@ -5,6 +5,8 @@
 //
 // =================================================================
 
+// railgun is the command line program for Railgun.
+//
 package main
 
 import (
@@ -42,7 +44,6 @@ import (
 )
 
 var GO_RAILGUN_COMPRESSION_ALGORITHMS = []string{"none", "bzip2", "gzip", "snappy"}
-var GO_RAILGUN_FORMATS = []string{"bson", "csv", "tsv", "hcl", "hcl2", "json", "jsonl", "properties", "toml", "yaml"}
 var GO_RAILGUN_DEFAULT_SALT = "4F56C8C88B38CD8CD96BF8A9724F4BFE"
 
 func printUsage() {
@@ -116,19 +117,19 @@ func main() {
 
 	flag.StringVar(&input_uri, "input_uri", "stdin", "The input uri")
 	flag.StringVar(&input_compression, "input_compression", "none", "The input compression: "+strings.Join(GO_RAILGUN_COMPRESSION_ALGORITHMS, ", "))
-	flag.StringVar(&input_format, "input_format", "", "The input format: "+strings.Join(GO_RAILGUN_FORMATS, ", "))
+	flag.StringVar(&input_format, "input_format", "", "The input format: "+strings.Join(gss.Formats, ", "))
 	flag.StringVar(&input_header_text, "h", "", "The input header if the stdin input has no header.")
 	flag.StringVar(&input_comment, "c", "", "The input comment character, e.g., #.  Commented lines are not sent to output.")
 	flag.StringVar(&input_passphrase_string, "input_passphrase", "", "The input passphrase.")
-	flag.StringVar(&input_salt_string, "input_salt", GO_RAILGUN_DEFAULT_SALT, "The input salt as hexidecimal.")
+	flag.StringVar(&input_salt_string, "input_salt", GO_RAILGUN_DEFAULT_SALT, "The input salt as hexadecimal.")
 
 	flag.IntVar(&input_reader_buffer_size, "input_reader_buffer_size", 4096, "The input reader buffer size") // default from https://golang.org/src/bufio/bufio.go
 
 	flag.StringVar(&output_uri, "output_uri", "stdout", "The output uri")
 	flag.StringVar(&output_compression, "output_compression", "none", "The output compression: "+strings.Join(GO_RAILGUN_COMPRESSION_ALGORITHMS, ", "))
-	flag.StringVar(&output_format, "output_format", "", "The output format: "+strings.Join(GO_RAILGUN_FORMATS, ", "))
+	flag.StringVar(&output_format, "output_format", "", "The output format: "+strings.Join(gss.Formats, ", "))
 	flag.StringVar(&output_passphrase_string, "output_passphrase", "", "The output passphrase.")
-	flag.StringVar(&output_salt_string, "output_salt", GO_RAILGUN_DEFAULT_SALT, "The output salt as hexidecimal.")
+	flag.StringVar(&output_salt_string, "output_salt", GO_RAILGUN_DEFAULT_SALT, "The output salt as hexadecimal.")
 
 	flag.StringVar(&dfl_exp, "dfl_exp", "", "Process using dfl expression")
 	flag.StringVar(&dfl_file, "dfl_file", "", "Process using dfl file.")
@@ -312,23 +313,25 @@ func main() {
 				log.Fatal(errors.Wrap(err, "error dumping dfl_node as yaml to stdout"))
 			}
 			fmt.Println(dfl_node_yaml)
+			fmt.Println(dfl_node.Dfl(dfl.DefaultQuotes, true, 0))
 		}
 
 		input_type, err := gss.GetType(input_string, input_format)
 		if err != nil {
 			log.Fatal(errors.Wrap(err, "error geting type for input"))
 		}
-		
+
 		input_object, err := gss.Deserialize(input_string, input_format, input_header, input_comment, input_type, verbose)
 		if err != nil {
 			log.Fatal(errors.Wrap(err, "error deserializing input using format "+input_format))
 		}
-		
+
 		var output interface{}
 		if dfl_node != nil {
-			o, err := dfl_node.Evaluate(input_object, funcs, []string{"'", "\"", "`"})
+			_, o, err := dfl_node.Evaluate(map[string]interface{}{}, input_object, funcs, []string{"'", "\"", "`"})
 			if err != nil {
-				log.Fatal(errors.Wrap(err, "error processing"))
+				fmt.Fprintf(os.Stdout, "%+v", err)
+				log.Fatal(errors.Wrap(err, "error evaluating filter"))
 			}
 			output = o
 		} else {

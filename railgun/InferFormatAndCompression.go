@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 )
 
-// InferFormatAndCompression infers the format and compresion of the file.
+// InferFormatAndCompression infers the format and compression of the file.
 //  - *.json => ("json", "") // JSON File
 //  - *.json.bz2 => ("json", "bzip2") // bzip2-compressed JSON file
 //  - *.json.gz => ("json", "gzip") // gzip-compressed JSON file
