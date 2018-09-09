@@ -4,7 +4,12 @@
 // Released as open source under the MIT License.  See LICENSE file.
 //
 // =================================================================
+package railgunerrors
 
-package railgun
+type ErrMissingRequiredParameter struct {
+	Name string
+}
 
-var VERSION = "0.0.5"
+func (e *ErrMissingRequiredParameter) Error() string {
+	return "required parameter with name " + e.Name + " is missing"
+}

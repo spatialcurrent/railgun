@@ -5,6 +5,17 @@
 //
 // =================================================================
 
-package railgun
+package railgunerrors
 
-var VERSION = "0.0.5"
+import (
+	"fmt"
+)
+
+type ErrAlreadyExists struct {
+	Name  string
+	Value interface{}
+}
+
+func (e *ErrAlreadyExists) Error() string {
+	return "config " + e.Name + " with name " + fmt.Sprint(e.Value) + " already exists"
+}

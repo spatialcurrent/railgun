@@ -1,18 +1,10 @@
 #!/bin/bash
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-DEST=$(realpath ${1:-$DIR/../bin})
+DEST=${1:-$DIR/../bin}
 
 mkdir -p $DEST
 
-echo "******************"
-echo "Formatting $(realpath $DIR/../railgun)"
-cd $DIR/../railgun
-go fmt
-echo "Formatting $(realpath $DIR/../cmd/railgun)"
-cd $DIR/../cmd/railgun
-go fmt
-echo "Done formatting."
 echo "******************"
 echo "Building program railgun"
 cd $DEST

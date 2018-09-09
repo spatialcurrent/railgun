@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/spatialcurrent/railgun.svg)](https://travis-ci.org/spatialcurrent/railgun) [![Go Report Card](https://goreportcard.com/badge/spatialcurrent/railgun)](https://goreportcard.com/report/spatialcurrent/railgun)  [![GoDoc](https://godoc.org/github.com/spatialcurrent/railgun?status.svg)](https://godoc.org/github.com/spatialcurrent/railgun) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://github.com/spatialcurrent/railgun/blob/master/LICENSE)
+[![CircleCI](https://circleci.com/gh/spatialcurrent/railgun/tree/master.svg?style=svg)](https://circleci.com/gh/spatialcurrent/railgun/tree/master) [![Go Report Card](https://goreportcard.com/badge/spatialcurrent/railgun)](https://goreportcard.com/report/spatialcurrent/railgun)  [![GoDoc](https://godoc.org/github.com/spatialcurrent/railgun?status.svg)](https://godoc.org/github.com/spatialcurrent/railgun) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://github.com/spatialcurrent/railgun/blob/master/LICENSE)
 
 # Railgun
 

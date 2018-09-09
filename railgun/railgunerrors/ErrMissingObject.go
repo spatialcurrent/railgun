@@ -5,6 +5,13 @@
 //
 // =================================================================
 
-package railgun
+package railgunerrors
 
-var VERSION = "0.0.5"
+type ErrMissingObject struct {
+	Type string
+	Name string
+}
+
+func (e *ErrMissingObject) Error() string {
+	return e.Type + " with name " + e.Name + " does not exist or otherwise missing"
+}

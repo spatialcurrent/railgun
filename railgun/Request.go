@@ -7,4 +7,8 @@
 
 package railgun
 
-var VERSION = "0.0.5"
+type Request interface {
+	String() string
+	Map() map[string]interface{}
+	Serialize(format string) (string, error)
+}
