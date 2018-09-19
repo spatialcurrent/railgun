@@ -58,6 +58,10 @@ func SplitNameFormatCompression(p string) (string, string, string) {
 		compression = "bzip2"
 		p = p[:len(p)-4]
 		ext = filepath.Ext(p)
+	} else if ext == ".zip" {
+		compression = "zip"
+		p = p[:len(p)-4]
+		ext = filepath.Ext(p)
 	}
 
 	if len(ext) == 0 {

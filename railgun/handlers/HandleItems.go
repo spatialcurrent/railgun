@@ -3,8 +3,8 @@ package handlers
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/spatialcurrent/go-reader/reader"
 	"github.com/spatialcurrent/go-dfl/dfl"
+	"github.com/spatialcurrent/go-reader/reader"
 	"github.com/spatialcurrent/railgun/railgun"
 	"github.com/spf13/viper"
 	"net/http"
@@ -18,7 +18,7 @@ import (
 
 func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString, messages chan interface{}, collectionsList []railgun.Collection, collectionsByName map[string]railgun.Collection) {
 
-	verbose := viper.GetBool("verbose")
+	verbose := v.GetBool("verbose")
 
 	collection, ok := collectionsByName[vars["name"]]
 	if !ok {
@@ -64,11 +64,11 @@ func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars ma
 	var aws_session *session.Session
 	var s3_client *s3.S3
 
-  inputUri, err := dfl.EvaluateString(collection.DataStore.Uri, map[string]interface{}{}, dfl.NewFuntionMapWithDefaults(), dfl.DefaultQuotes)
-  if err != nil {
-    messages <- errors.Wrap(err, "error evaluating datastore uri ")
+	inputUri, err := dfl.EvaluateString(collection.DataStore.Uri, map[string]interface{}{}, dfl.NewFuntionMapWithDefaults(), dfl.DefaultQuotes)
+	if err != nil {
+		messages <- errors.Wrap(err, "error evaluating datastore uri ")
 		return
-  }
+	}
 
 	if strings.HasPrefix(inputUri, "s3://") {
 		aws_session = railgun.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
@@ -135,10 +135,13 @@ func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars ma
 		inputFormat,
 		[]string{},
 		"",
+		false,
 		-1,
 		exp,
 		"",
 		outputFormat,
+		[]string{},
+		-1,
 		verbose)
 	if err != nil {
 		panic(err)

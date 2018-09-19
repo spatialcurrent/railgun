@@ -23,11 +23,11 @@ func ParseDfl(dflUri string, dflExpression string) (dfl.Node, error) {
 	}
 
 	if len(dflExpression) > 0 {
-		n, err := dfl.Parse(dflExpression)
+		n, err := dfl.ParseCompile(dflExpression)
 		if err != nil {
 			return nil, errors.Wrap(err, "Error parsing dfl node.")
 		}
-		dflNode = n.Compile()
+		dflNode = n
 	}
 
 	return dflNode, nil

@@ -13,11 +13,11 @@ func HandleCollections(v *viper.Viper, w http.ResponseWriter, r *http.Request, v
 	data["collections"] = collectionsList
 
 	_, format, _ := railgun.SplitNameFormatCompression(r.URL.Path)
-	str, err := gss.Serialize(data, format)
+	b, err := gss.SerializeBytes(data, format, []string{}, -1)
 	if err != nil {
 		messages <- err
 		return
 	}
-	w.Write([]byte(str))
+	w.Write(b)
 
 }

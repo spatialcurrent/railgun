@@ -17,7 +17,7 @@ import (
 	//"strings"
 )
 
-func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, inputComment string, inputLimit int, dflExpression string, dflUri string, outputFormat string, verbose bool) (string, error) {
+func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, inputComment string, inputLazyQuotes bool, inputLimit int, dflExpression string, dflUri string, outputFormat string, outputHeader []string, outputLimit int, verbose bool) (string, error) {
 
 	if len(outputFormat) > 0 {
 
@@ -29,7 +29,7 @@ func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, i
 		}
 
 		if verbose && dflNode != nil {
-			dflNodeAsYaml, err := gss.Serialize(dflNode.Map(), "yaml")
+			dflNodeAsYaml, err := gss.SerializeString(dflNode.Map(), "yaml", []string{}, 0)
 			if err != nil {
 				return "", errors.Wrap(err, "error dumping dflNode as yaml to stdout")
 			}
@@ -42,7 +42,7 @@ func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, i
 			return "", errors.Wrap(err, "error getting type for input")
 		}
 
-		inputObject, err := gss.Deserialize(string(inputBytes), inputFormat, inputHeader, inputComment, inputLimit, inputType, verbose)
+		inputObject, err := gss.Deserialize(string(inputBytes), inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, inputType, verbose)
 		if err != nil {
 			return "", errors.Wrap(err, "error deserializing input using format "+inputFormat)
 		}
@@ -60,7 +60,7 @@ func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, i
 
 		output = gss.StringifyMapKeys(output)
 
-		outputString, err := gss.Serialize(output, outputFormat)
+		outputString, err := gss.SerializeString(output, outputFormat, outputHeader, outputLimit)
 		if err != nil {
 			return "", errors.Wrap(err, "error converting output")
 		}
