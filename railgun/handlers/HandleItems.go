@@ -6,6 +6,7 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader/reader"
 	"github.com/spatialcurrent/railgun/railgun"
+	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
 	"github.com/spf13/viper"
 	"net/http"
 	"strings"
@@ -16,13 +17,13 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString, messages chan interface{}, collectionsList []railgun.Collection, collectionsByName map[string]railgun.Collection) {
+func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString, requests chan railgun.Request, messages chan interface{}, errorsChannel chan error, collectionsList []railgun.Collection, collectionsByName map[string]railgun.Collection) {
 
 	verbose := v.GetBool("verbose")
 
 	collection, ok := collectionsByName[vars["name"]]
 	if !ok {
-		messages <- errors.New("invalid name")
+		errorsChannel <- &railgunerrors.ErrMissingCollection{Name: vars["name"]}
 		return
 	}
 
@@ -30,7 +31,7 @@ func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars ma
 
 	exp, err := qs.FirstString("dfl")
 	if err != nil {
-		messages <- err
+		errorsChannel <- err
 		return
 	}
 
@@ -39,7 +40,7 @@ func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars ma
 		switch errors.Cause(err).(type) {
 		case *railgun.ErrQueryStringParameterNotExist:
 		default:
-			messages <- err
+			errorsChannel <- err
 			return
 		}
 	} else {
@@ -57,16 +58,16 @@ func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars ma
 	awsSessionToken := v.GetString("aws-session-token")
 
 	// Input Flags
-	inputReaderBufferSize := viper.GetInt("input-reader-buffer-size")
-	inputPassphrase := viper.GetString("input-passphrase")
-	inputSalt := viper.GetString("input-salt")
+	inputReaderBufferSize := v.GetInt("input-reader-buffer-size")
+	inputPassphrase := v.GetString("input-passphrase")
+	inputSalt := v.GetString("input-salt")
 
 	var aws_session *session.Session
 	var s3_client *s3.S3
 
 	inputUri, err := dfl.EvaluateString(collection.DataStore.Uri, map[string]interface{}{}, dfl.NewFuntionMapWithDefaults(), dfl.DefaultQuotes)
 	if err != nil {
-		messages <- errors.Wrap(err, "error evaluating datastore uri ")
+		errorsChannel <- errors.Wrap(err, "error evaluating datastore uri ")
 		return
 	}
 
@@ -85,7 +86,7 @@ func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars ma
 		false,
 		s3_client)
 	if err != nil {
-		messages <- errors.Wrap(err, "error opening resource from uri "+inputUri)
+		errorsChannel <- errors.Wrap(err, "error opening resource from uri "+inputUri)
 		return
 	}
 
@@ -113,20 +114,20 @@ func HandleItems(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars ma
 			}
 		}
 		if len(inputFormat) == 0 {
-			messages <- "Error: Provided no --input-format and could not infer from resource.\nRun \"railgun --help\" for more information."
+			errorsChannel <- errors.New("Error: Provided no --input-format and could not infer from resource.\nRun \"railgun --help\" for more information.")
 			return
 		}
 	}
 
 	inputBytesEncrypted, err := inputReader.ReadAll()
 	if err != nil {
-		messages <- errors.New("error reading from resource")
+		errorsChannel <- errors.New("error reading from resource")
 		return
 	}
 
 	inputStringPlain, err := railgun.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
 	if err != nil {
-		messages <- errors.Wrap(err, "error decoding input")
+		errorsChannel <- errors.Wrap(err, "error decoding input")
 		return
 	}
 

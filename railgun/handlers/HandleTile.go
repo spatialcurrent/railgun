@@ -9,9 +9,11 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
+	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/go-reader/reader"
 	"github.com/spatialcurrent/railgun/railgun"
 	"github.com/spatialcurrent/railgun/railgun/geo"
+	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
 	"github.com/spf13/viper"
 	"net/http"
 )
@@ -26,17 +28,28 @@ func respondWith404AndEmptyFeatureCollection(w http.ResponseWriter) {
 	w.Write([]byte("{\"type\":\"FeatureCollection\",\"features\":[]}"))
 }
 
+func respondWith500AndEmptyFeatureCollection(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte("{\"type\":\"FeatureCollection\",\"features\":[]}"))
+}
+
 func respondWithEmptyFeatureCollection(w http.ResponseWriter) {
 	w.Write([]byte("{\"type\":\"FeatureCollection\",\"features\":[]}"))
 }
 
-func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString, messages chan interface{}, collectionsList []railgun.Collection, collectionsByName map[string]railgun.Collection) {
+func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString, requests chan railgun.Request, messages chan interface{}, errorsChannel chan error, collectionsList []railgun.Collection, collectionsByName map[string]railgun.Collection) {
 
 	verbose := v.GetBool("verbose")
+	
+	tileRequest := &railgun.TileRequest{Collection: vars["name"], Header: r.Header}
+	// Defer putting tile request into requests channel, so it can pick up more metadata during execution
+  defer func() {
+    requests <- tileRequest
+  }()
 
 	collection, ok := collectionsByName[vars["name"]]
 	if !ok {
-		messages <- errors.New("invalid name " + vars["name"])
+		errorsChannel <- &railgunerrors.ErrMissingCollection{Name: vars["name"]}
 		return
 	}
 
@@ -47,28 +60,31 @@ func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
 		switch errors.Cause(err).(type) {
 		case *railgun.ErrQueryStringParameterNotExist:
 		default:
-			messages <- err
+			errorsChannel <- err
 			return
 		}
 	}
 
 	z, err := strconv.Atoi(vars["z"])
 	if err != nil {
-		messages <- err
+		errorsChannel <- &railgunerrors.ErrInvalidParameter{Name: "z", Value: vars["z"]}
 		return
 	}
+	tileRequest.Z = z
 
 	x, err := strconv.Atoi(vars["x"])
 	if err != nil {
-		messages <- err
+		errorsChannel <- &railgunerrors.ErrInvalidParameter{Name: "x", Value: vars["x"]}
 		return
 	}
+	tileRequest.X = x
 
 	y, err := strconv.Atoi(vars["y"])
 	if err != nil {
-		messages <- err
+		errorsChannel <- &railgunerrors.ErrInvalidParameter{Name: "y", Value: vars["y"]}
 		return
 	}
+	tileRequest.Y = y
 
 	/*ctx := map[string]interface{}{
 	  "z": 10, // z
@@ -77,12 +93,8 @@ func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
 	ctx := map[string]interface{}{"z": z, "x": x, "y": y}
 	_, inputUri, err := collection.DataStore.Uri.Evaluate(map[string]interface{}{}, ctx, dfl.NewFuntionMapWithDefaults(), dfl.DefaultQuotes)
 	if err != nil {
-		messages <- errors.Wrap(err, "error evaluating datastore uri with context "+fmt.Sprint(ctx))
+		errorsChannel <- errors.Wrap(err, "error evaluating datastore uri with context "+fmt.Sprint(ctx))
 		return
-	}
-
-	if verbose {
-		messages <- "requesting " + fmt.Sprint(z) + "-" + fmt.Sprint(x) + "-" + fmt.Sprint(y) + " from " + fmt.Sprint(inputUri)
 	}
 
 	inputUriString := ""
@@ -93,23 +105,27 @@ func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
 		respondWithEmptyFeatureCollection(w)
 		return
 	}
+	
+	tileRequest.Source = inputUriString
 
 	bbox := geo.TileToBoundingBox(z, x, geo.FlipY(y, z, 256, geo.WebMercatorExtent, geo.WebMercatorResolutions))
 
-	g := "filter(@, '((@_tile_z == 10) and (@_tile_x == " + fmt.Sprint(x) + ") and (@_tile_y == " + fmt.Sprint(y) + ")) or ((@geometry?.coordinates != null) and (($c := @geometry.coordinates) | ($c[0] within " + fmt.Sprint(bbox[0]) + " and " + fmt.Sprint(bbox[2]) + ") and ($c[1] within " + fmt.Sprint(bbox[1]) + " and " + fmt.Sprint(bbox[3]) + ")))')"
+	g := "filter(@, '((@_tile_z == "+fmt.Sprint(z)+") and (@_tile_x == " + fmt.Sprint(x) + ") and (@_tile_y == " + fmt.Sprint(y) + ")) or ((@geometry?.coordinates != null) and (($c := @geometry.coordinates) | ($c[0] within " + fmt.Sprint(bbox[0]) + " and " + fmt.Sprint(bbox[2]) + ") and ($c[1] within " + fmt.Sprint(bbox[1]) + " and " + fmt.Sprint(bbox[3]) + ")))')"
 
 	if len(exp) > 0 {
 		exp = g + " | " + exp
 	} else {
 		exp = g
 	}
+	
+	tileRequest.Expression = exp
 
 	limit, err := qs.FirstInt("limit")
 	if err != nil {
 		switch errors.Cause(err).(type) {
 		case *railgun.ErrQueryStringParameterNotExist:
 		default:
-			messages <- err
+			errorsChannel <- err
 			return
 		}
 	} else {
@@ -117,9 +133,9 @@ func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
 	}
 
 	if vars["ext"] == "geojson" {
-		exp += " | map(@, '@properties -= {`_tile_x`, `_tile_y`, `_tile_z`}') | {type:FeatureCollection, features:@}"
+		exp += " | map(@, '@properties -= {`_tile_x`, `_tile_y`, `_tile_z`}') | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}"
 	}
-
+	
 	// AWS Flags
 	awsDefaultRegion := v.GetString("aws-default-region")
 	awsAccessKeyId := v.GetString("aws-access-key-id")
@@ -127,14 +143,17 @@ func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
 	awsSessionToken := v.GetString("aws-session-token")
 
 	// Input Flags
-	inputReaderBufferSize := viper.GetInt("input-reader-buffer-size")
-	inputPassphrase := viper.GetString("input-passphrase")
-	inputSalt := viper.GetString("input-salt")
+	inputReaderBufferSize := v.GetInt("input-reader-buffer-size")
+	inputPassphrase := v.GetString("input-passphrase")
+	inputSalt := v.GetString("input-salt")
 
 	var aws_session *session.Session
 	var s3_client *s3.S3
 
 	if strings.HasPrefix(inputUriString, "s3://") {
+	  if verbose {
+	    fmt.Println("Connecting to AWS with AWS_ACCESS_KEY_ID "+awsAccessKeyId)
+	  }
 		aws_session = railgun.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
 		s3_client = s3.New(aws_session)
 	}
@@ -195,13 +214,13 @@ func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
 			if verbose {
 				messages <- "when opening resource " + fmt.Sprint(z) + "-" + fmt.Sprint(x) + "-" + fmt.Sprint(y) + " had error reading bytes"
 			}
-			messages <- errors.New("error reading from resource")
+			errorsChannel <- errors.New("error reading from resource")
 			return
 		}
 
 		b, err := railgun.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
 		if err != nil {
-			messages <- errors.Wrap(err, "error decoding input")
+			errorsChannel <- errors.Wrap(err, "error decoding input")
 			return
 		}
 		inputBytesPlain = &b
@@ -209,8 +228,13 @@ func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
 		collection.Cache.Set(inputUriString, inputBytesPlain, cache.DefaultExpiration)
 
 	}
+	
+	if len(outputFormat) == 0 {
+	  w.Write(*inputBytesPlain)
+	  return
+	}
 
-	str, err := railgun.ProcessInput(
+	outputObject, err := railgun.ProcessObject(
 		*inputBytesPlain,
 		inputFormat,
 		[]string{},
@@ -219,14 +243,19 @@ func HandleTile(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
 		-1,
 		exp,
 		"",
-		outputFormat,
-		[]string{},
-		-1,
 		verbose)
+		
+	outputObject = gss.StringifyMapKeys(outputObject)
+	
+	tileRequest.Features = int(dfl.TryGetInt64(outputObject, "numberOfFeatures", 0))
+
+	outputBytes, err := gss.SerializeBytes(outputObject, outputFormat, []string{}, -1)
 	if err != nil {
-		panic(err)
+		errorsChannel <- errors.Wrap(err, "error converting output")
+		respondWith500AndEmptyFeatureCollection(w)
+		return
 	}
-	w.Write([]byte(str))
+	w.Write(outputBytes)
 	return
 
 }

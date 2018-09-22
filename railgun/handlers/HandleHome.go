@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-func HandleHome(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString, messages chan interface{}, collectionsList []railgun.Collection, collectionsByName map[string]railgun.Collection) {
+func HandleHome(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString, requests chan railgun.Request, messages chan interface{}, errors chan error, collectionsList []railgun.Collection, collectionsByName map[string]railgun.Collection) {
 
 	str := `
     <!doctype html>
