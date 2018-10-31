@@ -87,7 +87,7 @@ func SplitNameFormatCompression(p string) (string, string, string) {
 		return p, "yaml", compression
 	case ".yml":
 		return p, "yaml", compression
-	case ".properties":
+	case ".properties", ".props", ".prop":
 		return p, "properties", compression
 	case ".tf":
 		return p, "hcl", compression

@@ -1,13 +1,17 @@
 package handlers
 
 import (
-	//"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/railgun/railgun"
-	"github.com/spf13/viper"
 	"net/http"
 )
 
-func HandleHome(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString, requests chan railgun.Request, messages chan interface{}, errors chan error, collectionsList []railgun.Collection, collectionsByName map[string]railgun.Collection) {
+type HomeHandler struct {
+	*BaseHandler
+	CollectionsList   []railgun.Collection
+	CollectionsByName map[string]railgun.Collection
+}
+
+func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	str := `
     <!doctype html>
@@ -58,18 +62,46 @@ func HandleHome(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
           var btn = document.getElementById("updateLayer");
           btn.addEventListener("click", function() {
             let url = new URL(window.location.href);
+            
+            let maskUrl = createMaskUrl(
+              "dc-amenities",
+              document.getElementById("dfl").value);
+              
+            maskLayer.getSource().setUrl(maskUrl);
+            maskLayer.getSource().refresh();
+            
             let vectorUrl = createVectorUrl(
               "dc-amenities",
-              "filter(@, \""+document.getElementById("dfl").value+"\")",
+              document.getElementById("dfl").value,
               url.searchParams.get("limit"));
-            let vectorSource = createVectorSource(vectorUrl);
-            vectorLayer.setSource(vectorSource);
+            
+            vectorLayer.setSource(createVectorSource(vectorUrl));
           });
         </script>
         <script>
+          var createMaskUrl = function(collection, dfl) {
+            var maskUrl = "/collections/"+collection+"/mask/tiles/{z}/{x}/{y}.png";
+            var qs = {"threshold": "1", "zoom": "17", "alpha": 200};
+            if (dfl != undefined && dfl.length > 0 ) {
+              qs.dfl = encodeURI(dfl);
+            }
+            var keys = Object.keys(qs);
+            if(keys.length > 0) {
+             maskUrl += "?";
+             for(var i = 0; i < keys.length; i++) {
+               if(i > 0) {
+                 maskUrl += "&"
+               }
+               maskUrl += keys[i] + "=" + qs[keys[i]];
+             }
+            };
+            return maskUrl;
+          };
+          
+          
           var createVectorUrl = function(collection, dfl, limit) {
-            var vectorUrl = "/collections/"+collection+"/tiles/{z}/{x}/{y}.geojson";
-            var qs = {};
+            var vectorUrl = "/collections/"+collection+"/data/tiles/{z}/{x}/{y}.geojson";
+            var qs = {"buffer": "1"};
             if (dfl != undefined && dfl.length > 0 ) {
               qs.dfl = encodeURI(dfl);
             }
@@ -100,6 +132,11 @@ func HandleHome(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
                   xhr.open('GET', url);
                   xhr.onload = function() {
                     var json = JSON.parse(xhr.responseText);
+                    json.features.forEach((f) => {
+                      f.properties._tile_z = tile.tileCoord[0];
+                      f.properties._tile_x = tile.tileCoord[1];
+                      f.properties._tile_y = tile.tileCoord[2];
+                    });
                     var format = tile.getFormat();
                     tile.setFeatures(format.readFeatures(json));
                     tile.setProjection(format.defaultFeatureProjection);
@@ -115,14 +152,30 @@ func HandleHome(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
           var baseLayer = new ol.layer.Tile({
             source: new ol.source.OSM()
           });
+          
           let url = new URL(window.location.href);
+          
+          var maskUrl = createMaskUrl(
+            "dc-amenities",
+            url.searchParams.get("dfl"));
+          
           var vectorUrl = createVectorUrl(
             "dc-amenities",
-            "filter(@, \""+(url.searchParams.get("dfl"))+"\")",
+            url.searchParams.get("dfl"),
             url.searchParams.get("limit"));
+            
           var vectorSource = createVectorSource(vectorUrl);
+          
+          var maskLayer = new ol.layer.Tile({
+            source: new ol.source.XYZ({
+              url: maskUrl
+            })
+          });
+          
           var vectorLayer = new ol.layer.VectorTile({
             source: vectorSource,
+            renderBuffer: 256,
+            renderMode: "image",
             style: function(feature) {
               return new ol.style.Style({
                 image: new ol.style.Circle({
@@ -133,9 +186,14 @@ func HandleHome(v *viper.Viper, w http.ResponseWriter, r *http.Request, vars map
               });
             }
           });
+          
+          var layers = [baseLayer, maskLayer, vectorLayer];
+          //var layers = [baseLayer, vectorLayer];
+          //var layers = [baseLayer, maskLayer];
+          
           var map = new ol.Map({
             target: 'map',
-            layers: [baseLayer, vectorLayer],
+            layers: layers,
             view: new ol.View({
               center: ol.proj.fromLonLat([0, 0]),
               zoom: 3

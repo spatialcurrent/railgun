@@ -14,7 +14,7 @@ import (
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 )
 
-func ProcessObject(inputBytes []byte, inputFormat string, inputHeader []string, inputComment string, inputLazyQuotes bool, inputLimit int, dflExpression string, dflUri string, verbose bool) (interface{}, error) {
+func ProcessObject(inputBytes []byte, inputFormat string, inputHeader []string, inputComment string, inputLazyQuotes bool, inputLimit int, dflExpression string, dflVars map[string]interface{}, dflUri string, verbose bool) (interface{}, error) {
 
 	funcs := dfl.NewFuntionMapWithDefaults()
 
@@ -37,13 +37,13 @@ func ProcessObject(inputBytes []byte, inputFormat string, inputHeader []string, 
 		return "", errors.Wrap(err, "error getting type for input")
 	}
 
-	inputObject, err := gss.Deserialize(string(inputBytes), inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, inputType, verbose)
+	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, inputType, verbose)
 	if err != nil {
 		return "", errors.Wrap(err, "error deserializing input using format "+inputFormat)
 	}
 
 	if dflNode != nil {
-		_, outputObject, err := dflNode.Evaluate(map[string]interface{}{}, inputObject, funcs, []string{"'", "\"", "`"})
+		_, outputObject, err := dflNode.Evaluate(dflVars, inputObject, funcs, []string{"'", "\"", "`"})
 		if err != nil {
 			return "", errors.Wrap(err, "error evaluating filter")
 		}
