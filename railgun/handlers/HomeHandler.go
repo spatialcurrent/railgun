@@ -1,14 +1,12 @@
 package handlers
 
 import (
-	"github.com/spatialcurrent/railgun/railgun"
+	//"github.com/spatialcurrent/railgun/railgun"
 	"net/http"
 )
 
 type HomeHandler struct {
 	*BaseHandler
-	CollectionsList   []railgun.Collection
-	CollectionsByName map[string]railgun.Collection
 }
 
 func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

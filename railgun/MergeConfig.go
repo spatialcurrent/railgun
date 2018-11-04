@@ -27,9 +27,10 @@ func MergeConfig(v *viper.Viper, configUri string) {
 		panic(err)
 	}
 
-	err = v.MergeConfig(bytes.NewReader(configBytes))
-	if err != nil {
-		panic(err)
+	if len(configBytes) > 0 {
+		err = v.MergeConfig(bytes.NewReader(configBytes))
+		if err != nil {
+			panic(err)
+		}
 	}
-
 }

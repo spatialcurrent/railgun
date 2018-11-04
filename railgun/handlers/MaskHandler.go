@@ -22,10 +22,8 @@ import (
 
 type MaskHandler struct {
 	*BaseHandler
-	CollectionsList   []railgun.Collection
-	CollectionsByName map[string]railgun.Collection
-	AwsSessionCache   *gocache.Cache
-	DflFuncs          dfl.FunctionMap
+	AwsSessionCache *gocache.Cache
+	DflFuncs        dfl.FunctionMap
 }
 
 func (h *MaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -41,11 +39,9 @@ func (h *MaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString) error {
 
-	v := h.Viper
-
 	ext := vars["ext"]
 
-	tileRequest := &railgun.TileRequest{Collection: vars["name"], Header: r.Header}
+	tileRequest := &railgun.TileRequest{Layer: vars["name"], Header: r.Header}
 	cacheRequest := &railgun.CacheRequest{}
 	// Defer putting tile request into requests channel, so it can pick up more metadata during execution
 	defer func() {
@@ -55,9 +51,9 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		}
 	}()
 
-	collection, ok := h.CollectionsByName[vars["name"]]
+	layer, ok := h.Config.GetLayer(vars["name"])
 	if !ok {
-		return &railgunerrors.ErrMissingCollection{Name: vars["name"]}
+		return &railgunerrors.ErrMissing{Type: "layer", Name: vars["name"]}
 	}
 
 	tile, err := railgun.NewTileFromRequestVars(vars)
@@ -66,7 +62,7 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	}
 	tileRequest.Tile = tile
 
-	if maxExtent := collection.DataStore.Extent; len(maxExtent) > 0 {
+	if maxExtent := layer.DataStore.Extent; len(maxExtent) > 0 {
 		minX := geo.LongitudeToTile(maxExtent[0], tile.Z)
 		minY := geo.LatitudeToTile(maxExtent[3], tile.Z) // flip y
 		//minY := geo.FlipY(geo.LatitudeToTile(maxExtent[1], tile.Z), tile.Z, 256, geo.WebMercatorExtent, geo.WebMercatorResolutions)
@@ -81,7 +77,7 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	}
 
 	ctx := tile.Map()
-	_, inputUri, err := collection.DataStore.Uri.Evaluate(map[string]interface{}{}, ctx, dfl.NewFuntionMapWithDefaults(), dfl.DefaultQuotes)
+	_, inputUri, err := layer.DataStore.Uri.Evaluate(map[string]interface{}{}, ctx, dfl.NewFuntionMapWithDefaults(), dfl.DefaultQuotes)
 	if err != nil {
 		return errors.Wrap(err, "error evaluating datastore uri with context "+fmt.Sprint(ctx))
 	}
@@ -144,20 +140,20 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	//pipeline = append(pipeline, named.Length)
 
 	// AWS Flags
-	awsDefaultRegion := v.GetString("aws-default-region")
-	awsAccessKeyId := v.GetString("aws-access-key-id")
-	awsSecretAccessKey := v.GetString("aws-secret-access-key")
-	awsSessionToken := v.GetString("aws-session-token")
+	awsDefaultRegion := h.Config.GetString("aws-default-region")
+	awsAccessKeyId := h.Config.GetString("aws-access-key-id")
+	awsSecretAccessKey := h.Config.GetString("aws-secret-access-key")
+	awsSessionToken := h.Config.GetString("aws-session-token")
 
 	// Input Flags
-	inputReaderBufferSize := v.GetInt("input-reader-buffer-size")
-	inputPassphrase := v.GetString("input-passphrase")
-	inputSalt := v.GetString("input-salt")
+	inputReaderBufferSize := h.Config.GetInt("input-reader-buffer-size")
+	inputPassphrase := h.Config.GetString("input-passphrase")
+	inputSalt := h.Config.GetString("input-salt")
 
 	var awsSession *session.Session
 	var s3_client *s3.S3
 
-	verbose := v.GetBool("verbose")
+	verbose := h.Config.GetBool("verbose")
 
 	if strings.HasPrefix(inputUriString, "s3://") {
 		if verbose {
@@ -173,10 +169,10 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		s3_client = s3.New(awsSession)
 	}
 
-	hit, inputObject, err := collection.Cache.Get(
+	hit, inputObject, err := layer.Cache.Get(
 		inputUriString,
-		collection.DataStore.Format,
-		collection.DataStore.Compression,
+		layer.DataStore.Format,
+		layer.DataStore.Compression,
 		inputReaderBufferSize,
 		inputPassphrase,
 		inputSalt,

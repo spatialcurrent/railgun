@@ -8,7 +8,7 @@ import (
 
 type TileRequest struct {
 	Header        http.Header
-	Collection    string
+	Layer         string
 	Tile          Tile
 	Bbox          []float64
 	Source        string
@@ -18,7 +18,7 @@ type TileRequest struct {
 }
 
 func (tr TileRequest) String() string {
-	str := "requested tile " + tr.Tile.String() + " for collection " + tr.Collection + " from " + tr.Source
+	str := "requested tile " + tr.Tile.String() + " for layer " + tr.Layer + " from " + tr.Source
 	if len(tr.Expression) > 0 {
 		str += " with filter " + tr.Expression
 	}
@@ -28,8 +28,8 @@ func (tr TileRequest) String() string {
 
 func (tr TileRequest) Map() map[string]interface{} {
 	return map[string]interface{}{
-		"collection": map[string]interface{}{
-			"name": tr.Collection,
+		"layer": map[string]interface{}{
+			"name": tr.Layer,
 		},
 		"bbox":          tr.Bbox,
 		"outsideExtent": tr.OutsideExtent,

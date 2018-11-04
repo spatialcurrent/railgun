@@ -546,7 +546,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 				switch rerr := err.(type) {
 				case *railgunerrors.ErrInvalidParameter:
 					errorWriter.WriteString(rerr.Error())
-				case *railgunerrors.ErrMissingCollection:
+				case *railgunerrors.ErrMissing:
 					errorWriter.WriteString(rerr.Error())
 				default:
 					errorWriter.WriteString(rerr.Error())

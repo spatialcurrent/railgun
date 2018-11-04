@@ -6,16 +6,20 @@ import (
 	"net/http"
 )
 
-type CollectionsHandler struct {
+type LayersHandler struct {
 	*BaseHandler
-	CollectionsList   []railgun.Collection
-	CollectionsByName map[string]railgun.Collection
 }
 
-func (h *CollectionsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *LayersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	layersList := h.Config.ListWorkspaces()
+	layers := make([]map[string]interface{}, 0, len(layersList))
+	for i := 0; i < len(layersList); i++ {
+		layers = append(layers, layersList[i].Map())
+	}
 
 	data := map[string]interface{}{}
-	data["collections"] = h.CollectionsList
+	data["layers"] = layers
 
 	_, format, _ := railgun.SplitNameFormatCompression(r.URL.Path)
 	b, err := gss.SerializeBytes(data, format, []string{}, -1)

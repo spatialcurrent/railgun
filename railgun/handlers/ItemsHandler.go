@@ -9,7 +9,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
+	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/railgun/railgun"
+	"github.com/spatialcurrent/railgun/railgun/named"
 	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
 	"net/http"
 	"strings"
@@ -17,33 +19,59 @@ import (
 
 type ItemsHandler struct {
 	*BaseHandler
-	CollectionsList   []railgun.Collection
-	CollectionsByName map[string]railgun.Collection
-	AwsSessionCache   *gocache.Cache
-	DflFuncs          dfl.FunctionMap
+	AwsSessionCache *gocache.Cache
+	DflFuncs        dfl.FunctionMap
 }
 
 func (h *ItemsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	v := h.Viper
-
 	vars := mux.Vars(r)
 	qs := railgun.NewQueryString(r)
-
-	verbose := v.GetBool("verbose")
-
-	collection, ok := h.CollectionsByName[vars["name"]]
-	if !ok {
-		h.Errors <- &railgunerrors.ErrMissingCollection{Name: vars["name"]}
-		return
+	err := h.Run(w, r, vars, qs)
+	if err != nil {
+		h.Errors <- err
+		respondWithEmptyFeatureCollection(w)
+		//w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString) error {
+
+	config := h.Config
+
+	verbose := config.GetBool("verbose")
+
+	layer, ok := h.Config.GetLayer(vars["name"])
+	if !ok {
+		return &railgunerrors.ErrMissing{Type: "layer", Name: vars["name"]}
+	}
+
+	ext := vars["ext"]
 
 	_, outputFormat, _ := railgun.SplitNameFormatCompression(r.URL.Path)
 
+	pipeline := []dfl.Node{}
+
 	exp, err := qs.FirstString("dfl")
 	if err != nil {
-		h.Errors <- err
-		return
+		switch errors.Cause(err).(type) {
+		case *railgun.ErrQueryStringParameterNotExist:
+		default:
+			return err
+		}
+	}
+
+	if len(exp) > 0 {
+		_, _, err := dfl.Parse(exp)
+		if err != nil {
+			return errors.Wrap(err, "error processing filter expression "+exp)
+		}
+
+		pipeline = append(pipeline, dfl.Function{Name: "filter", MultiOperator: &dfl.MultiOperator{Arguments: []dfl.Node{
+			dfl.Attribute{Name: ""},
+			dfl.Literal{Value: exp},
+		}}})
+	} else {
+		pipeline = append(pipeline, dfl.Attribute{Name: ""})
 	}
 
 	limit, err := qs.FirstInt("limit")
@@ -51,33 +79,30 @@ func (h *ItemsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch errors.Cause(err).(type) {
 		case *railgun.ErrQueryStringParameterNotExist:
 		default:
-			h.Errors <- err
-			return
+			return err
 		}
 	} else {
-		exp += " | limit(@, " + fmt.Sprint(limit) + ")"
+		pipeline = append(pipeline, named.Limit)
 	}
 
-	if vars["ext"] == "geojson" {
-		exp += " | {type:FeatureCollection, features:@}"
+	if ext == "geojson" || ext == "toml" {
+		pipeline = append(pipeline, named.GeoJSONLinesToGeoJSON)
 	}
 
 	// AWS Flags
-	awsDefaultRegion := v.GetString("aws-default-region")
-	awsAccessKeyId := v.GetString("aws-access-key-id")
-	awsSecretAccessKey := v.GetString("aws-secret-access-key")
-	awsSessionToken := v.GetString("aws-session-token")
+	awsDefaultRegion := config.GetString("aws-default-region")
+	awsAccessKeyId := config.GetString("aws-access-key-id")
+	awsSecretAccessKey := config.GetString("aws-secret-access-key")
+	awsSessionToken := config.GetString("aws-session-token")
 
 	// Input Flags
-	inputReaderBufferSize := v.GetInt("input-reader-buffer-size")
-	inputPassphrase := v.GetString("input-passphrase")
-	inputSalt := v.GetString("input-salt")
+	inputReaderBufferSize := config.GetInt("input-reader-buffer-size")
+	inputPassphrase := config.GetString("input-passphrase")
+	inputSalt := config.GetString("input-salt")
 
-	_, inputUriString, err := dfl.EvaluateString(collection.DataStore.Uri, map[string]interface{}{}, map[string]interface{}{}, h.DflFuncs, dfl.DefaultQuotes)
+	_, inputUriString, err := dfl.EvaluateString(layer.DataStore.Uri, map[string]interface{}{}, map[string]interface{}{}, h.DflFuncs, dfl.DefaultQuotes)
 	if err != nil {
-		respondWithEmptyFeatureCollection(w)
-		h.Errors <- errors.Wrap(err, "error evaluating datastore uri")
-		return
+		return errors.Wrap(err, "error evaluating datastore uri")
 	}
 
 	var awsSession *session.Session
@@ -97,8 +122,8 @@ func (h *ItemsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s3_client = s3.New(awsSession)
 	}
 
-	inputFormat := collection.DataStore.Format
-	inputCompression := collection.DataStore.Compression
+	inputFormat := layer.DataStore.Format
+	inputCompression := layer.DataStore.Compression
 
 	inputReader, inputMetadata, err := grw.ReadFromResource(
 		inputUriString,
@@ -107,8 +132,7 @@ func (h *ItemsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		false,
 		s3_client)
 	if err != nil {
-		h.Errors <- errors.Wrap(err, "error opening resource from uri "+inputUriString)
-		return
+		return errors.Wrap(err, "error opening resource from uri "+inputUriString)
 	}
 
 	if len(inputFormat) == 0 {
@@ -135,41 +159,53 @@ func (h *ItemsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if len(inputFormat) == 0 {
-			h.Errors <- errors.New("Error: Provided no --input-format and could not infer from resource.\nRun \"railgun --help\" for more information.")
-			return
+			return errors.New("Error: Provided no --input-format and could not infer from resource.\nRun \"railgun --help\" for more information.")
 		}
 	}
 
 	inputBytesEncrypted, err := inputReader.ReadAll()
 	if err != nil {
-		h.Errors <- errors.New("error reading from resource")
-		return
+		return errors.New("error reading from resource")
 	}
 
 	inputStringPlain, err := railgun.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
 	if err != nil {
-		h.Errors <- errors.Wrap(err, "error decoding input")
-		return
+		return errors.Wrap(err, "error decoding input")
 	}
 
-	str, err := railgun.ProcessInput(
+	outputType, err := gss.GetType(inputStringPlain, inputFormat)
+	if err != nil {
+		return errors.Wrap(err, "error decoding input")
+	}
+
+	inputObject, err := gss.DeserializeBytes(
 		inputStringPlain,
 		inputFormat,
 		[]string{},
 		"",
 		false,
-		-1,
-		exp,
-		map[string]interface{}{},
-		"",
-		outputFormat,
-		[]string{},
-		-1,
-		verbose)
+		gss.NoLimit,
+		outputType,
+		false)
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err, "error deserializing input")
 	}
-	w.Write([]byte(str))
-	return
+
+	_, outputObject, err := dfl.Pipeline{Nodes: pipeline}.Evaluate(
+		map[string]interface{}{"limit": limit},
+		inputObject,
+		h.DflFuncs,
+		dfl.DefaultQuotes)
+	if err != nil {
+		return errors.Wrap(err, "error processing features")
+	}
+
+	outputBytes, err := gss.SerializeBytes(gss.StringifyMapKeys(outputObject), outputFormat, []string{}, gss.NoLimit)
+	if err != nil {
+		return errors.Wrap(err, "error converting output")
+	}
+	w.Write(outputBytes)
+
+	return nil
 
 }
