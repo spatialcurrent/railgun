@@ -39,8 +39,8 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/railgun/railgun"
-	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
+	"github.com/spatialcurrent/railgun/railgun/util"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 )
 
 var GO_RAILGUN_COMPRESSION_ALGORITHMS = []string{"none", "bzip2", "gzip", "snappy"}
@@ -68,7 +68,7 @@ func processOutput(content string, outputUri string, outputCompression string, o
 
 		if len(outputPassphrase) > 0 {
 
-			outputBlock, err := railgun.CreateCipher(outputSalt, outputPassphrase)
+			outputBlock, err := util.CreateCipher(outputSalt, outputPassphrase)
 			if err != nil {
 				return errors.New("error creating cipher for output passphrase")
 			}
@@ -437,7 +437,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 	v.BindPFlags(cmd.Flags())
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	v.AutomaticEnv() // set environment variables to overwrite config
-	railgun.MergeConfigs(v, v.GetStringArray("config-uri"))
+	util.MergeConfigs(v, v.GetStringArray("config-uri"))
 
 	verbose := v.GetBool("verbose")
 
@@ -507,7 +507,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 	var s3_client *s3.S3
 
 	if strings.HasPrefix(inputUri, "s3://") || strings.HasPrefix(outputUri, "s3://") || strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(logDestination, "s3://") {
-		aws_session = railgun.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+		aws_session = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
 		s3_client = s3.New(aws_session)
 	}
 
@@ -544,9 +544,9 @@ func processFunction(cmd *cobra.Command, args []string) {
 		go func(errorsChannel chan error) {
 			for err := range errorsChannel {
 				switch rerr := err.(type) {
-				case *railgunerrors.ErrInvalidParameter:
+				case *rerrors.ErrInvalidParameter:
 					errorWriter.WriteString(rerr.Error())
-				case *railgunerrors.ErrMissing:
+				case *rerrors.ErrMissing:
 					errorWriter.WriteString(rerr.Error())
 				default:
 					errorWriter.WriteString(rerr.Error())
@@ -557,7 +557,12 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 	if len(inputFormat) == 0 || len(inputCompression) == 0 {
 		_, inputPath := grw.SplitUri(inputUri)
-		_, inputFormatGuess, inputCompressionGuess := railgun.SplitNameFormatCompression(inputPath)
+		fmt.Println("Input Path:", inputPath)
+		_, inputFormatGuess, inputCompressionGuess := util.SplitNameFormatCompression(inputPath)
+
+		fmt.Println("inputFormatGuess:", inputFormatGuess)
+		fmt.Println("inputCompressionGuess:", inputCompressionGuess)
+
 		if len(inputFormat) == 0 {
 			inputFormat = inputFormatGuess
 		}
@@ -565,6 +570,9 @@ func processFunction(cmd *cobra.Command, args []string) {
 			inputCompression = inputCompressionGuess
 		}
 	}
+
+	fmt.Println("Input Uri:", inputUri)
+	fmt.Println("Input Compression:", inputCompression)
 
 	inputReader, inputMetadata, err := grw.ReadFromResource(inputUri, inputCompression, inputReaderBufferSize, false, s3_client)
 	if err != nil {
@@ -575,7 +583,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 	if len(outputFormat) == 0 || len(outputCompression) == 0 {
 		_, outputPath := grw.SplitUri(outputUri)
-		_, outputFormatGuess, outputCompressionGuess := railgun.SplitNameFormatCompression(outputPath)
+		_, outputFormatGuess, outputCompressionGuess := util.SplitNameFormatCompression(outputPath)
 		if len(outputFormat) == 0 {
 			outputFormat = outputFormatGuess
 		}
@@ -611,6 +619,9 @@ func processFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	fmt.Println("Output Format:", outputFormat)
+	fmt.Println("Output Compression:", outputCompression)
+
 	if stream {
 
 		if !(outputFormat == "csv" || outputFormat == "tsv" || outputFormat == "jsonl") {
@@ -642,7 +653,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 				os.Exit(1)
 			}
 
-			inputBytesPlain, err := railgun.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
+			inputBytesPlain, err := util.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
 			if err != nil {
 				errorWriter.WriteString(errors.Wrap(err, "error decoding input").Error())
 				errorWriter.Close()
@@ -669,7 +680,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 				os.Exit(1)
 			}
 
-			dflNode, err := railgun.ParseDfl(dflUri, dflExpression)
+			dflNode, err := util.ParseDfl(dflUri, dflExpression)
 			if err != nil {
 				errorWriter.WriteError(errors.Wrap(err, "error parsing"))
 				errorWriter.Close()
@@ -745,7 +756,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 			return
 		}
 
-		dflNode, err := railgun.ParseDfl(dflUri, dflExpression)
+		dflNode, err := util.ParseDfl(dflUri, dflExpression)
 		if err != nil {
 			errorWriter.WriteString(errors.Wrap(err, "error parsing").Error())
 			errorWriter.Close()
@@ -909,14 +920,14 @@ func processFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	inputBytesPlain, err := railgun.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
+	inputBytesPlain, err := util.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
 	if err != nil {
 		errorWriter.WriteString(errors.Wrap(err, "error decoding input").Error())
 		errorWriter.Close()
 		os.Exit(1)
 	}
 
-	outputString, err := railgun.ProcessInput(inputBytesPlain, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, dflExpression, dflVars, dflUri, outputFormat, outputHeader, outputLimit, verbose)
+	outputString, err := util.ProcessInput(inputBytesPlain, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, dflExpression, dflVars, dflUri, outputFormat, outputHeader, outputLimit, verbose)
 	if err != nil {
 		errorWriter.WriteString(errors.Wrap(err, "error processing input").Error())
 		errorWriter.Close()

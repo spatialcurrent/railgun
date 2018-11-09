@@ -23,7 +23,7 @@ var cfgFile string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "railgun2",
+	Use:   "railgun",
 	Short: "a simple and fast data processing tool",
 	Long:  `Railgun is a simple and fast data processing tool built on go-reader, go-dfl, and go-simple-serializer.`,
 	// Uncomment the following line if your bare application

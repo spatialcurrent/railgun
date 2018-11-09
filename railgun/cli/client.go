@@ -13,7 +13,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/railgun/railgun"
+	"github.com/spatialcurrent/railgun/railgun/core"
+	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"io/ioutil"
@@ -31,7 +32,7 @@ func initViper(cmd *cobra.Command) *viper.Viper {
 	v.BindPFlags(cmd.Flags())
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	v.AutomaticEnv() // set environment variables to overwrite config
-	railgun.MergeConfigs(v, v.GetStringArray("config-uri"))
+	util.MergeConfigs(v, v.GetStringArray("config-uri"))
 	return v
 }
 
@@ -307,7 +308,7 @@ func init() {
 		},
 	}
 	clientCmd.AddCommand(workspacesCmd)
-	initRestCommands(workspacesCmd, "/workspaces", "workspace", "workspace", railgun.WorkspaceType)
+	initRestCommands(workspacesCmd, "/workspaces", "workspace", "workspace", core.WorkspaceType)
 
 	// Data Stores
 	datastoresCmd := &cobra.Command{
@@ -319,7 +320,7 @@ func init() {
 		},
 	}
 	clientCmd.AddCommand(datastoresCmd)
-	initRestCommands(datastoresCmd, "/datastores", "data store", "data stores", railgun.DataStoreType)
+	initRestCommands(datastoresCmd, "/datastores", "data store", "data stores", core.DataStoreType)
 
 	// Layers
 	layersCmd := &cobra.Command{
@@ -331,7 +332,7 @@ func init() {
 		},
 	}
 	clientCmd.AddCommand(layersCmd)
-	initRestCommands(layersCmd, "/layers", "layer", "layers", railgun.LayerType)
+	initRestCommands(layersCmd, "/layers", "layer", "layers", core.LayerType)
 
 	// Processes
 	processesCmd := &cobra.Command{
@@ -343,7 +344,7 @@ func init() {
 		},
 	}
 	clientCmd.AddCommand(processesCmd)
-	initRestCommands(processesCmd, "/processes", "process", "processes", railgun.ProcessType)
+	initRestCommands(processesCmd, "/processes", "process", "processes", core.ProcessType)
 
 	// Services
 	servicesCmd := &cobra.Command{
@@ -355,15 +356,57 @@ func init() {
 		},
 	}
 	clientCmd.AddCommand(servicesCmd)
-	initRestCommands(servicesCmd, "/services", "service", "services", railgun.ServiceType)
+	initRestCommands(servicesCmd, "/services", "service", "services", core.ServiceType)
 	servicesExecCmd := newPostCommand(
 		"exec",
 		"execute a service on the Railgun Server with the given input",
 		"execute a service on the Railgun Server with the given input",
 		"/services/exec.{ext}",
-		railgun.JobType)
+		core.JobType)
 	servicesCmd.AddCommand(servicesExecCmd)
-	initFlags(servicesExecCmd, railgun.JobType)
+	initFlags(servicesExecCmd, core.JobType)
+
+	// Jobs
+	jobsCmd := &cobra.Command{
+		Use:   "jobs",
+		Short: "interact with jobs on Railgun Server",
+		Long:  "interact with jobs on Railgun Server",
+		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Usage()
+		},
+	}
+	clientCmd.AddCommand(jobsCmd)
+	initRestCommands(jobsCmd, "/jobs", "job", "jobs", core.JobType)
+	jobExecCmd := newRestCommand(
+		"exec",
+		fmt.Sprintf("execute %s on Railgun Server", "job"),
+		fmt.Sprintf("execute %s on Railgun Server", "job"),
+		"/jobs/{name}/exec.{ext}",
+		"POST",
+		[]string{"name"})
+	jobExecCmd.Flags().String("name", "", fmt.Sprintf("name of %s on Railgun Server", "job"))
+	jobsCmd.AddCommand(jobExecCmd)
+
+	// Workflows
+	workflowsCmd := &cobra.Command{
+		Use:   "workflows",
+		Short: "interact with workflows on Railgun Server",
+		Long:  "interact with workflows on Railgun Server",
+		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Usage()
+		},
+	}
+	clientCmd.AddCommand(workflowsCmd)
+	initRestCommands(workflowsCmd, "/workflows", "workflow", "workflows", core.WorkflowType)
+	workflowExecCmd := newRestCommand(
+		"exec",
+		fmt.Sprintf("execute %s on Railgun Server", "workflow"),
+		fmt.Sprintf("execute %s on Railgun Server", "workflow"),
+		"/workflows/{name}/exec.{ext}",
+		"POST",
+		[]string{"name"})
+	workflowExecCmd.Flags().String("name", "", fmt.Sprintf("name of %s on Railgun Server", "workflow"))
+	workflowsCmd.AddCommand(workflowExecCmd)
 
 }
 

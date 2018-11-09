@@ -3,3 +3,5 @@ vendor
 Gopkg.lock
 *.so
 *.h
+data
+tmp

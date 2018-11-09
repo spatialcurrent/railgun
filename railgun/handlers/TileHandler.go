@@ -17,11 +17,13 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/go-try-get/gtg"
-	"github.com/spatialcurrent/railgun/railgun"
+	"github.com/spatialcurrent/railgun/railgun/core"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/geo"
 	"github.com/spatialcurrent/railgun/railgun/img"
 	"github.com/spatialcurrent/railgun/railgun/named"
-	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
+	"github.com/spatialcurrent/railgun/railgun/request"
+	"github.com/spatialcurrent/railgun/railgun/util"
 	"image/color"
 	"net/http"
 	"strings"
@@ -49,7 +51,7 @@ type TileHandler struct {
 
 func (h *TileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	qs := railgun.NewQueryString(r)
+	qs := request.NewQueryString(r)
 	err := h.Run(w, r, vars, qs)
 	if err != nil {
 		h.Errors <- err
@@ -58,19 +60,17 @@ func (h *TileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString) error {
-
-	config := h.Config
+func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs request.QueryString) error {
 
 	ext := vars["ext"]
 
 	layerName, ok := vars["name"]
 	if !ok {
-		return &railgunerrors.ErrMissingRequiredParameter{Name: "name"}
+		return &rerrors.ErrMissingRequiredParameter{Name: "name"}
 	}
 
-	tileRequest := &railgun.TileRequest{Layer: layerName, Header: r.Header}
-	cacheRequest := &railgun.CacheRequest{}
+	tileRequest := &request.TileRequest{Layer: layerName, Header: r.Header}
+	cacheRequest := &request.CacheRequest{}
 	// Defer putting tile request into requests channel, so it can pick up more metadata during execution
 	defer func() {
 		h.Requests <- tileRequest
@@ -79,14 +79,14 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		}
 	}()
 
-	layer, ok := h.Config.GetLayer(layerName)
+	layer, ok := h.Catalog.GetLayer(layerName)
 	if !ok {
-		return &railgunerrors.ErrMissingObject{Type: "layer", Name: layerName}
+		return &rerrors.ErrMissingObject{Type: "layer", Name: layerName}
 	}
 
-	_, outputFormat, _ := railgun.SplitNameFormatCompression(r.URL.Path)
+	_, outputFormat, _ := util.SplitNameFormatCompression(r.URL.Path)
 
-	tile, err := railgun.NewTileFromRequestVars(vars)
+	tile, err := core.NewTileFromRequestVars(vars)
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	}
 
 	ctx := tile.Map()
-	_, inputUriString, err := dfl.EvaluateString(layer.DataStore.Uri, map[string]interface{}{}, ctx, h.DflFuncs, dfl.DefaultQuotes)
+	_, inputUriString, err := dfl.EvaluateString(layer.DataStore.Uri, map[string]interface{}{}, ctx, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		respondWithEmptyFeatureCollection(w)
 		return errors.Wrap(err, "error evaluating datastore uri with context "+fmt.Sprint(ctx))
@@ -133,7 +133,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	buffer, err := qs.FirstInt("buffer")
 	if err != nil {
 		switch errors.Cause(err).(type) {
-		case *railgun.ErrQueryStringParameterNotExist:
+		case *request.ErrQueryStringParameterMissing:
 		default:
 			return err
 		}
@@ -162,7 +162,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	exp, err := qs.FirstString("dfl")
 	if err != nil {
 		switch errors.Cause(err).(type) {
-		case *railgun.ErrQueryStringParameterNotExist:
+		case *request.ErrQueryStringParameterMissing:
 		default:
 			return err
 		}
@@ -185,7 +185,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	limit, err := qs.FirstInt("limit")
 	if err != nil {
 		switch errors.Cause(err).(type) {
-		case *railgun.ErrQueryStringParameterNotExist:
+		case *request.ErrQueryStringParameterMissing:
 		default:
 			return err
 		}
@@ -198,20 +198,20 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	}
 
 	// AWS Flags
-	awsDefaultRegion := config.GetString("aws-default-region")
-	awsAccessKeyId := config.GetString("aws-access-key-id")
-	awsSecretAccessKey := config.GetString("aws-secret-access-key")
-	awsSessionToken := config.GetString("aws-session-token")
+	awsDefaultRegion := h.Viper.GetString("aws-default-region")
+	awsAccessKeyId := h.Viper.GetString("aws-access-key-id")
+	awsSecretAccessKey := h.Viper.GetString("aws-secret-access-key")
+	awsSessionToken := h.Viper.GetString("aws-session-token")
 
 	// Input Flags
-	inputReaderBufferSize := config.GetInt("input-reader-buffer-size")
-	inputPassphrase := config.GetString("input-passphrase")
-	inputSalt := config.GetString("input-salt")
+	inputReaderBufferSize := h.Viper.GetInt("input-reader-buffer-size")
+	inputPassphrase := h.Viper.GetString("input-passphrase")
+	inputSalt := h.Viper.GetString("input-salt")
 
 	var awsSession *session.Session
 	var s3_client *s3.S3
 
-	verbose := config.GetBool("verbose")
+	verbose := h.Viper.GetBool("verbose")
 
 	if strings.HasPrefix(inputUriString, "s3://") {
 		if verbose {
@@ -221,7 +221,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		if found {
 			awsSession = s.(*session.Session)
 		} else {
-			awsSession = railgun.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+			awsSession = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
 			h.AwsSessionCache.Set(awsAccessKeyId+"\n"+awsSessionToken, awsSession, gocache.DefaultExpiration)
 		}
 		s3_client = s3.New(awsSession)
@@ -251,7 +251,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	_, outputObject, err := dfl.Pipeline{Nodes: pipeline}.Evaluate(
 		map[string]interface{}{"bbox": bufferedBoundingBox, "limit": limit},
 		inputObject,
-		h.DflFuncs,
+		dfl.DefaultFunctionMap,
 		dfl.DefaultQuotes)
 	if err != nil {
 		return errors.Wrap(err, "error processing features")

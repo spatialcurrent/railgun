@@ -12,7 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/go-swagger-structs/swagger"
-	"github.com/spatialcurrent/railgun/railgun"
+	"github.com/spatialcurrent/railgun/railgun/core"
+	"github.com/spatialcurrent/railgun/railgun/util"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -192,7 +193,7 @@ func (h *SwaggerHandler) BuildPaths(singular string, plural string, basepath str
 
 func (h *SwaggerHandler) BuildDefinitions() map[string]swagger.Definition {
 	definitions := map[string]swagger.Definition{}
-	for name, t := range railgun.CoreTypes {
+	for name, t := range core.CoreTypes {
 		definitions[strings.Title(name)] = swagger.Definition{
 			Type:       "object",
 			Required:   h.getRequiredProperties(t),
@@ -204,7 +205,7 @@ func (h *SwaggerHandler) BuildDefinitions() map[string]swagger.Definition {
 
 func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 
-	location, err := url.Parse(h.Config.GetString("http-location"))
+	location, err := url.Parse(h.Viper.GetString("http-location"))
 	if err != nil {
 		return swagger.Document{}, err
 	}
@@ -348,6 +349,78 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 				},
 			},
 		},
+		"/jobs/{name}/exec.{ext}": swagger.Path{
+			Post: swagger.Operation{
+				Description: "execute a job for a service on the Railgun Server",
+				Tags:        []string{"Jobs"},
+				Consumes: []string{
+					"application/json",
+					"text/yaml",
+					"application/ubjson",
+					"application/toml",
+				},
+				Produces: []string{
+					"application/json",
+					"text/yaml",
+					"application/ubjson",
+					"application/toml",
+				},
+				Parameters: []swagger.Parameter{
+					swagger.Parameter{
+						Name:        "name",
+						Type:        "string",
+						Description: fmt.Sprintf("the name of the %s to execute on the Railgun Server", "job"),
+						In:          "path",
+						Required:    true,
+					},
+					params["ext"],
+				},
+				Responses: map[string]swagger.Response{
+					"200": swagger.Response{
+						Description: "OK",
+					},
+					"404": swagger.Response{
+						Description: fmt.Sprintf("Not found. %s with provided name was not found.", "service"),
+					},
+				},
+			},
+		},
+		"/workflows/{name}/exec.{ext}": swagger.Path{
+			Post: swagger.Operation{
+				Description: "execute a workflow for a service on the Railgun Server",
+				Tags:        []string{"Workflows"},
+				Consumes: []string{
+					"application/json",
+					"text/yaml",
+					"application/ubjson",
+					"application/toml",
+				},
+				Produces: []string{
+					"application/json",
+					"text/yaml",
+					"application/ubjson",
+					"application/toml",
+				},
+				Parameters: []swagger.Parameter{
+					swagger.Parameter{
+						Name:        "name",
+						Type:        "string",
+						Description: fmt.Sprintf("the name of the %s to execute on the Railgun Server", "workflow"),
+						In:          "path",
+						Required:    true,
+					},
+					params["ext"],
+				},
+				Responses: map[string]swagger.Response{
+					"200": swagger.Response{
+						Description: "OK",
+					},
+					"404": swagger.Response{
+						Description: fmt.Sprintf("Not found. %s with provided name was not found.", "workflow"),
+					},
+				},
+			},
+		},
 		"/layers/{name}/data/tiles/{z}/{x}/{y}.{ext}": swagger.Path{
 			Get: swagger.Operation{
 				Description: "Get GeoJSON tile of features filtered by a DFL expression.",
@@ -444,45 +517,49 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 		},
 	}
 
-	for k, v := range h.BuildPaths("workspace", "workspaces", "workspaces", railgun.WorkspaceType) {
+	for k, v := range h.BuildPaths("workspace", "workspaces", "workspaces", core.WorkspaceType) {
 		paths[k] = v
 	}
 
-	for k, v := range h.BuildPaths("data store", "data stores", "datastores", railgun.DataStoreType) {
+	for k, v := range h.BuildPaths("data store", "data stores", "datastores", core.DataStoreType) {
 		paths[k] = v
 	}
 
-	for k, v := range h.BuildPaths("layer", "layers", "layers", railgun.LayerType) {
+	for k, v := range h.BuildPaths("layer", "layers", "layers", core.LayerType) {
 		paths[k] = v
 	}
 
-	for k, v := range h.BuildPaths("process", "processes", "processes", railgun.ProcessType) {
+	for k, v := range h.BuildPaths("process", "processes", "processes", core.ProcessType) {
 		paths[k] = v
 	}
 
-	for k, v := range h.BuildPaths("service", "services", "services", railgun.ServiceType) {
+	for k, v := range h.BuildPaths("service", "services", "services", core.ServiceType) {
 		paths[k] = v
 	}
 
-	for k, v := range h.BuildPaths("job", "jobs", "jobs", railgun.JobType) {
+	for k, v := range h.BuildPaths("job", "jobs", "jobs", core.JobType) {
+		paths[k] = v
+	}
+
+	for k, v := range h.BuildPaths("workflow", "workflows", "workflows", core.WorkflowType) {
 		paths[k] = v
 	}
 
 	var contact *swagger.Contact
-	swaggerContactName := h.Config.GetString("swagger-contact-name")
-	swaggerContactEmail := h.Config.GetString("swagger-contact-email")
-	swaggerContactUrl := h.Config.GetString("swagger-contact-url")
+	swaggerContactName := h.Viper.GetString("swagger-contact-name")
+	swaggerContactEmail := h.Viper.GetString("swagger-contact-email")
+	swaggerContactUrl := h.Viper.GetString("swagger-contact-url")
 	if len(swaggerContactName) > 0 || len(swaggerContactEmail) > 0 || len(swaggerContactUrl) > 0 {
 		contact = &swagger.Contact{
-			Name:  h.Config.GetString("swagger-contact-name"),
-			Email: h.Config.GetString("swagger-contact-email"),
-			Url:   h.Config.GetString("swagger-contact-url"),
+			Name:  h.Viper.GetString("swagger-contact-name"),
+			Email: h.Viper.GetString("swagger-contact-email"),
+			Url:   h.Viper.GetString("swagger-contact-url"),
 		}
 	}
 
 	doc := swagger.Document{
 		Version:  "2.0",
-		Schemes:  h.Config.GetStringSlice("http-schemes"),
+		Schemes:  h.Viper.GetStringSlice("http-schemes"),
 		BasePath: location.Path,
 		Host:     location.Host,
 		External: &swagger.External{
@@ -515,7 +592,7 @@ func (h *SwaggerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, format, _ := railgun.SplitNameFormatCompression(r.URL.Path)
+	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 	b, err := gss.SerializeBytes(swaggerDocument, format, []string{}, -1)
 	if err != nil {
 		h.Messages <- err

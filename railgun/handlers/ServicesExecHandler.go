@@ -8,14 +8,15 @@
 package handlers
 
 import (
-	"fmt"
+	//"fmt"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/go-try-get/gtg"
-	"github.com/spatialcurrent/railgun/railgun"
-	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
+	"github.com/spatialcurrent/railgun/railgun/parser"
+	"github.com/spatialcurrent/railgun/railgun/util"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"net/http"
 	//"reflect"
 )
@@ -26,7 +27,7 @@ type ServicesExecHandler struct {
 
 func (h *ServicesExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	_, format, _ := railgun.SplitNameFormatCompression(r.URL.Path)
+	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
 	switch r.Method {
 	case "POST":
@@ -37,13 +38,14 @@ func (h *ServicesExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			if err != nil {
 				panic(err)
 			}
-		}
-		err = h.RespondWithObject(w, obj, format)
-		if err != nil {
-			h.Messages <- err
-			err = h.RespondWithError(w, err, format)
+		} else {
+			err = h.RespondWithObject(w, obj, format)
 			if err != nil {
-				panic(err)
+				h.Messages <- err
+				err = h.RespondWithError(w, err, format)
+				if err != nil {
+					panic(err)
+				}
 			}
 		}
 	case "OPTIONS":
@@ -65,12 +67,12 @@ func (h *ServicesExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 
 	serviceName := gtg.TryGetString(obj, "service", "")
 	if len(serviceName) == 0 {
-		return nil, &railgunerrors.ErrMissingRequiredParameter{Name: "service"}
+		return nil, &rerrors.ErrMissingRequiredParameter{Name: "service"}
 	}
 
-	service, ok := h.Config.GetService(serviceName)
+	service, ok := h.Catalog.GetService(serviceName)
 	if !ok {
-		return nil, &railgunerrors.ErrMissingObject{Type: "service", Name: serviceName}
+		return nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
 	}
 
 	vars := map[string]interface{}{}
@@ -78,16 +80,15 @@ func (h *ServicesExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 		vars[k] = v
 	}
 
-	variables, err := h.Config.ParseMap(obj, "variables")
+	variables, err := parser.ParseMap(obj, "variables")
 	if err != nil {
-		return nil, &railgunerrors.ErrInvalidParameter{Name: "variables", Value: gtg.TryGetString(obj, "variables", "")}
+		return nil, &rerrors.ErrInvalidParameter{Name: "variables", Value: gtg.TryGetString(obj, "variables", "")}
 	}
 	for k, v := range variables {
 		vars[k] = v
 	}
 
-	fmt.Println("Vars:", vars)
-	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, vars, map[string]interface{}{}, h.DflFuncs, dfl.DefaultQuotes)
+	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, vars, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid data store uri")
 	}
@@ -109,18 +110,14 @@ func (h *ServicesExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 		return nil, errors.Wrap(err, "error getting type for input")
 	}
 
-	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, []string{}, "", false, gss.NoLimit, inputType, false)
+	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, "", false, gss.NoLimit, inputType, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
 	}
 
-	fmt.Println("Vars:", vars)
-
-	fmt.Println("Vars:", vars)
-
-	_, outputObject, err := service.Process.Node.Evaluate(vars, inputObject, h.DflFuncs, dfl.DefaultQuotes)
+	_, outputObject, err := service.Process.Node.Evaluate(vars, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
-		return nil, errors.Wrap(err, "error evaluatig process with name "+service.Process.Name)
+		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
 	}
 	return outputObject, nil
 

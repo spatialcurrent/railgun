@@ -17,9 +17,10 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/railgun/railgun"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/named"
-	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
+	"github.com/spatialcurrent/railgun/railgun/request"
+	"github.com/spatialcurrent/railgun/railgun/util"
 	"net/http"
 	"strings"
 )
@@ -32,7 +33,7 @@ type ItemsHandler struct {
 
 func (h *ItemsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	qs := railgun.NewQueryString(r)
+	qs := request.NewQueryString(r)
 	err := h.Run(w, r, vars, qs)
 	if err != nil {
 		h.Errors <- err
@@ -41,27 +42,25 @@ func (h *ItemsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString) error {
+func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs request.QueryString) error {
 
-	config := h.Config
+	verbose := h.Viper.GetBool("verbose")
 
-	verbose := config.GetBool("verbose")
-
-	layer, ok := h.Config.GetLayer(vars["name"])
+	layer, ok := h.Catalog.GetLayer(vars["name"])
 	if !ok {
-		return &railgunerrors.ErrMissing{Type: "layer", Name: vars["name"]}
+		return &rerrors.ErrMissingObject{Type: "layer", Name: vars["name"]}
 	}
 
 	ext := vars["ext"]
 
-	_, outputFormat, _ := railgun.SplitNameFormatCompression(r.URL.Path)
+	_, outputFormat, _ := util.SplitNameFormatCompression(r.URL.Path)
 
 	pipeline := []dfl.Node{}
 
 	exp, err := qs.FirstString("dfl")
 	if err != nil {
 		switch errors.Cause(err).(type) {
-		case *railgun.ErrQueryStringParameterNotExist:
+		case *request.ErrQueryStringParameterMissing:
 		default:
 			return err
 		}
@@ -84,7 +83,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 	limit, err := qs.FirstInt("limit")
 	if err != nil {
 		switch errors.Cause(err).(type) {
-		case *railgun.ErrQueryStringParameterNotExist:
+		case *request.ErrQueryStringParameterMissing:
 		default:
 			return err
 		}
@@ -97,15 +96,15 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 	}
 
 	// AWS Flags
-	awsDefaultRegion := config.GetString("aws-default-region")
-	awsAccessKeyId := config.GetString("aws-access-key-id")
-	awsSecretAccessKey := config.GetString("aws-secret-access-key")
-	awsSessionToken := config.GetString("aws-session-token")
+	awsDefaultRegion := h.Viper.GetString("aws-default-region")
+	awsAccessKeyId := h.Viper.GetString("aws-access-key-id")
+	awsSecretAccessKey := h.Viper.GetString("aws-secret-access-key")
+	awsSessionToken := h.Viper.GetString("aws-session-token")
 
 	// Input Flags
-	inputReaderBufferSize := config.GetInt("input-reader-buffer-size")
-	inputPassphrase := config.GetString("input-passphrase")
-	inputSalt := config.GetString("input-salt")
+	inputReaderBufferSize := h.Viper.GetInt("input-reader-buffer-size")
+	inputPassphrase := h.Viper.GetString("input-passphrase")
+	inputSalt := h.Viper.GetString("input-salt")
 
 	_, inputUriString, err := dfl.EvaluateString(layer.DataStore.Uri, map[string]interface{}{}, map[string]interface{}{}, h.DflFuncs, dfl.DefaultQuotes)
 	if err != nil {
@@ -123,7 +122,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		if found {
 			awsSession = s.(*session.Session)
 		} else {
-			awsSession = railgun.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+			awsSession = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
 			h.AwsSessionCache.Set(awsAccessKeyId+"\n"+awsSessionToken, awsSession, gocache.DefaultExpiration)
 		}
 		s3_client = s3.New(awsSession)
@@ -157,7 +156,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		}
 		if len(inputFormat) == 0 || len(inputCompression) == 0 {
 			_, inputPath := grw.SplitUri(inputUriString)
-			_, inputFormatGuess, inputCompressionGuess := railgun.SplitNameFormatCompression(inputPath)
+			_, inputFormatGuess, inputCompressionGuess := util.SplitNameFormatCompression(inputPath)
 			if len(inputFormat) == 0 {
 				inputFormat = inputFormatGuess
 			}
@@ -175,7 +174,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		return errors.New("error reading from resource")
 	}
 
-	inputStringPlain, err := railgun.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
+	inputStringPlain, err := util.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
 	if err != nil {
 		return errors.Wrap(err, "error decoding input")
 	}
@@ -188,7 +187,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 	inputObject, err := gss.DeserializeBytes(
 		inputStringPlain,
 		inputFormat,
-		[]string{},
+		gss.NoHeader,
 		"",
 		false,
 		gss.NoLimit,

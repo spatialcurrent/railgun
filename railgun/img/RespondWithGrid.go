@@ -7,7 +7,7 @@
 package img
 
 import (
-	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"image"
 	"image/color"
 	"image/gif"
@@ -38,5 +38,5 @@ func RespondWithGrid(ext string, writer http.ResponseWriter, grid []uint8, width
 		return png.Encode(writer, i)
 	}
 
-	return &railgunerrors.ErrUnknownImageExtension{Extension: ext}
+	return &rerrors.ErrUnknownImageExtension{Extension: ext}
 }

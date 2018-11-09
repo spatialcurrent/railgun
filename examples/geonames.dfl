@@ -1,0 +1,42 @@
+(
+  (@longitude == null) or
+  (@latitude == null) or
+  (len(@longitude) == 0) or
+  (len(@latitude) == 0)
+) ? null :
+(
+  not (@feature_class in [A, P])
+) ? null :
+{
+  type: "Feature",
+  id: int64(@geonameid),
+  properties: (
+    (@ + {
+      id: int64(@geonameid),
+      geonameid: int64(@geonameid),
+      elevation: @elevation,
+      population: int64(coalesce(@population, "0"))
+    }) - {longitude, latitude}
+  ),
+  geometry: {
+    type: "Point",
+    coordinates: [float64(@longitude), float64(@latitude)]
+  },
+  geometry_name: "the_geom"
+} |
+(
+  $c := @geometry?.coordinates
+) |
+(
+  @properties += {
+    _tile_z: $z,
+    _tile_x: tileX($c[0], $z),
+    _tile_y: tileY($c[1], $z)
+  }
+) |
+(
+  not (
+    ($c[0] between -180.0 and 180.0) and
+    ($c[1] between -85.0 and 85.0)
+  )
+) ? null : @

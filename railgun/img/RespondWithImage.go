@@ -8,7 +8,7 @@
 package img
 
 import (
-	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"image"
 	"image/gif"
 	"image/jpeg"
@@ -25,5 +25,5 @@ func RespondWithImage(ext string, w http.ResponseWriter, img *image.RGBA) error 
 	case "png":
 		return png.Encode(w, img)
 	}
-	return &railgunerrors.ErrUnknownImageExtension{Extension: ext}
+	return &rerrors.ErrUnknownImageExtension{Extension: ext}
 }

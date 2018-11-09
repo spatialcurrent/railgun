@@ -15,11 +15,13 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
-	"github.com/spatialcurrent/railgun/railgun"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/geo"
 	"github.com/spatialcurrent/railgun/railgun/img"
 	"github.com/spatialcurrent/railgun/railgun/named"
-	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
+	"github.com/spatialcurrent/railgun/railgun/core"
+	"github.com/spatialcurrent/railgun/railgun/request"
+	"github.com/spatialcurrent/railgun/railgun/util"
 	"image/color"
 	"math"
 	"net/http"
@@ -33,7 +35,7 @@ type MaskHandler struct {
 
 func (h *MaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	qs := railgun.NewQueryString(r)
+	qs := request.NewQueryString(r)
 	err := h.Run(w, r, vars, qs)
 	if err != nil {
 		h.Errors <- err
@@ -42,12 +44,12 @@ func (h *MaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs railgun.QueryString) error {
+func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs request.QueryString) error {
 
 	ext := vars["ext"]
 
-	tileRequest := &railgun.TileRequest{Layer: vars["name"], Header: r.Header}
-	cacheRequest := &railgun.CacheRequest{}
+	tileRequest := &request.TileRequest{Layer: vars["name"], Header: r.Header}
+	cacheRequest := &request.CacheRequest{}
 	// Defer putting tile request into requests channel, so it can pick up more metadata during execution
 	defer func() {
 		h.Requests <- tileRequest
@@ -56,12 +58,12 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		}
 	}()
 
-	layer, ok := h.Config.GetLayer(vars["name"])
+	layer, ok := h.Catalog.GetLayer(vars["name"])
 	if !ok {
-		return &railgunerrors.ErrMissing{Type: "layer", Name: vars["name"]}
+		return &rerrors.ErrMissingObject{Type: "layer", Name: vars["name"]}
 	}
 
-	tile, err := railgun.NewTileFromRequestVars(vars)
+	tile, err := core.NewTileFromRequestVars(vars)
 	if err != nil {
 		return err
 	}
@@ -82,7 +84,7 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	}
 
 	ctx := tile.Map()
-	_, inputUri, err := layer.DataStore.Uri.Evaluate(map[string]interface{}{}, ctx, dfl.NewFuntionMapWithDefaults(), dfl.DefaultQuotes)
+	_, inputUri, err := layer.DataStore.Uri.Evaluate(map[string]interface{}{}, ctx, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return errors.Wrap(err, "error evaluating datastore uri with context "+fmt.Sprint(ctx))
 	}
@@ -121,7 +123,7 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	exp, err := qs.FirstString("dfl")
 	if err != nil {
 		switch errors.Cause(err).(type) {
-		case *railgun.ErrQueryStringParameterNotExist:
+		case *request.ErrQueryStringParameterMissing:
 		default:
 			return err
 		}
@@ -145,20 +147,20 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	//pipeline = append(pipeline, named.Length)
 
 	// AWS Flags
-	awsDefaultRegion := h.Config.GetString("aws-default-region")
-	awsAccessKeyId := h.Config.GetString("aws-access-key-id")
-	awsSecretAccessKey := h.Config.GetString("aws-secret-access-key")
-	awsSessionToken := h.Config.GetString("aws-session-token")
+	awsDefaultRegion := h.Viper.GetString("aws-default-region")
+	awsAccessKeyId := h.Viper.GetString("aws-access-key-id")
+	awsSecretAccessKey := h.Viper.GetString("aws-secret-access-key")
+	awsSessionToken := h.Viper.GetString("aws-session-token")
 
 	// Input Flags
-	inputReaderBufferSize := h.Config.GetInt("input-reader-buffer-size")
-	inputPassphrase := h.Config.GetString("input-passphrase")
-	inputSalt := h.Config.GetString("input-salt")
+	inputReaderBufferSize := h.Viper.GetInt("input-reader-buffer-size")
+	inputPassphrase := h.Viper.GetString("input-passphrase")
+	inputSalt := h.Viper.GetString("input-salt")
 
 	var awsSession *session.Session
 	var s3_client *s3.S3
 
-	verbose := h.Config.GetBool("verbose")
+	verbose := h.Viper.GetBool("verbose")
 
 	if strings.HasPrefix(inputUriString, "s3://") {
 		if verbose {
@@ -168,7 +170,7 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		if found {
 			awsSession = s.(*session.Session)
 		} else {
-			awsSession = railgun.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+			awsSession = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
 			h.AwsSessionCache.Set(awsAccessKeyId+"\n"+awsSessionToken, awsSession, gocache.DefaultExpiration)
 		}
 		s3_client = s3.New(awsSession)
@@ -199,7 +201,7 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 			"bbox": bbox,
 			"z":    maskZoom},
 		inputObject,
-		h.DflFuncs,
+		dfl.DefaultFunctionMap,
 		dfl.DefaultQuotes)
 	if err != nil {
 		return errors.Wrap(err, "error processing features")
@@ -207,7 +209,7 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 
 	groups, ok := outputObject.(map[string]map[string][]interface{})
 	if !ok {
-		return &railgunerrors.ErrInvalidType{
+		return &rerrors.ErrInvalidType{
 			Type:  reflect.TypeOf(map[string]map[string][]interface{}{}),
 			Value: groups}
 	}

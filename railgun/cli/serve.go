@@ -10,89 +10,59 @@ package cli
 import (
 	"context"
 	"fmt"
-	"github.com/gorilla/mux"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/spf13/cobra"
-	//"github.com/spf13/viper"
-	//"image"
-	//"image/color"
-	//"image/draw"
-	//"image/png"
+	"github.com/spf13/viper"
 	"net/http"
 	"os"
 	"os/signal"
-	//"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 )
 
 import (
-	//"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	gorilla_handlers "github.com/gorilla/handlers"
 	"github.com/pkg/errors"
-	//"github.com/spatialcurrent/go-adaptive-functions/af"
-	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	//"github.com/spatialcurrent/go-try-get/gtg"
-	"github.com/spatialcurrent/railgun/railgun"
-	"github.com/spatialcurrent/railgun/railgun/handlers"
-	//"github.com/spatialcurrent/railgun/railgun/img"
-	"github.com/spatialcurrent/railgun/railgun/railgunerrors"
+	"github.com/spatialcurrent/railgun/railgun/request"
+	"github.com/spatialcurrent/railgun/railgun/router"
+	"github.com/spatialcurrent/railgun/railgun/util"
+	"github.com/spatialcurrent/railgun/railgun/catalog"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 )
 
 var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[]}")
 
-func NewRouter(c *railgun.Config, funcs dfl.FunctionMap, datastores []string, errorWriter grw.ByteWriteCloser, logWriter grw.ByteWriteCloser, logFormat string, verbose bool) (*mux.Router, error) {
-
-	r := mux.NewRouter()
-
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-			requestObject := map[string]string{
-				"url":    r.URL.String(),
-				"Method": r.Method,
-			}
-
-			requestProperties, err := gss.SerializeString(requestObject, "properties", []string{}, gss.NoLimit)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println("# Request #")
-			fmt.Println(requestProperties)
-			next.ServeHTTP(w, r)
-		})
-	})
+func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, errorWriter grw.ByteWriteCloser, logWriter grw.ByteWriteCloser, logFormat string, verbose bool) (*router.RailgunRouter, error) {
 
 	errorsChannel := make(chan error, 10000)
-	requests := make(chan railgun.Request, 10000)
+	requests := make(chan request.Request, 10000)
 	messages := make(chan interface{}, 10000)
 
 	if logFormat == "text" {
-		go func(requests chan railgun.Request, logRequestsTile bool, logRequestsCache bool) {
+		go func(requests chan request.Request, logRequestsTile bool, logRequestsCache bool) {
 			for r := range requests {
 				switch r.(type) {
-				case *railgun.TileRequest:
+				case *request.TileRequest:
 					if logRequestsTile {
 						messages <- r.String()
 					}
-				case *railgun.CacheRequest:
+				case *request.CacheRequest:
 					if logRequestsCache {
 						messages <- r.String()
 					}
 				}
 			}
-		}(requests, c.GetBool("log-requests-tile"), c.GetBool("log-requests-cache"))
+		}(requests, v.GetBool("log-requests-tile"), v.GetBool("log-requests-cache"))
 	} else {
-		go func(requests chan railgun.Request, format string, errorsChannel chan error, logRequestsTile bool, logRequestsCache bool) {
+		go func(requests chan request.Request, format string, errorsChannel chan error, logRequestsTile bool, logRequestsCache bool) {
 			for r := range requests {
 				switch r.(type) {
-				case *railgun.TileRequest:
+				case *request.TileRequest:
 					if logRequestsTile {
 						msg, err := r.Serialize(format)
 						if err != nil {
@@ -101,7 +71,7 @@ func NewRouter(c *railgun.Config, funcs dfl.FunctionMap, datastores []string, er
 							messages <- msg
 						}
 					}
-				case *railgun.CacheRequest:
+				case *request.CacheRequest:
 					if logRequestsCache {
 						msg, err := r.Serialize(format)
 						if err != nil {
@@ -112,7 +82,7 @@ func NewRouter(c *railgun.Config, funcs dfl.FunctionMap, datastores []string, er
 					}
 				}
 			}
-		}(requests, logFormat, errorsChannel, c.GetBool("log-requests-tile"), c.GetBool("log-requests-cache"))
+		}(requests, logFormat, errorsChannel, v.GetBool("log-requests-tile"), v.GetBool("log-requests-cache"))
 	}
 
 	go func(messages chan interface{}) {
@@ -122,8 +92,8 @@ func NewRouter(c *railgun.Config, funcs dfl.FunctionMap, datastores []string, er
 		}
 	}(messages)
 
-	errorDestination := c.GetString("error-destination")
-	logDestination := c.GetString("log-destination")
+	errorDestination := v.GetString("error-destination")
+	logDestination := v.GetString("log-destination")
 
 	if errorDestination == logDestination {
 		go func(errorsChannel chan error) {
@@ -135,9 +105,9 @@ func NewRouter(c *railgun.Config, funcs dfl.FunctionMap, datastores []string, er
 		go func(errorsChannel chan error) {
 			for err := range errorsChannel {
 				switch rerr := err.(type) {
-				case *railgunerrors.ErrInvalidParameter:
+				case *rerrors.ErrInvalidParameter:
 					errorWriter.WriteString(rerr.Error())
-				case *railgunerrors.ErrMissing:
+				case *rerrors.ErrMissing:
 					errorWriter.WriteString(rerr.Error())
 				default:
 					errorWriter.WriteString(rerr.Error())
@@ -147,287 +117,83 @@ func NewRouter(c *railgun.Config, funcs dfl.FunctionMap, datastores []string, er
 	}
 
 	awsSessionCache := gocache.New(5*time.Minute, 10*time.Minute)
-	dflFuncs := dfl.NewFuntionMapWithDefaults()
 
-	r.Methods("Get").Name("home").Path("/").Handler(&handlers.HomeHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("Get").Name("swagger").Path("/swagger.{ext}").Handler(&handlers.SwaggerHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("Get").Name("formats").Path("/gss/formats.{ext}").Handler(&handlers.FormatsHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("Get").Name("functions").Path("/dfl/functions.{ext}").Handler(&handlers.FunctionsHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "POST", "PUT", "OPTIONS").Name("workspaces").Path("/workspaces.{ext}").Handler(&handlers.WorkspacesHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "DELETE").Name("workspace").Path("/workspaces/{name}.{ext}").Handler(&handlers.WorkspaceHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "POST", "PUT", "OPTIONS").Name("datastores").Path("/datastores.{ext}").Handler(&handlers.DataStoresHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "DELETE").Name("datastore").Path("/datastores/{name}.{ext}").Handler(&handlers.DataStoreHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "POST", "PUT", "OPTIONS").Name("layers").Path("/layers.{ext}").Handler(&handlers.LayersHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "DELETE").Name("layer").Path("/layers/{name}.{ext}").Handler(&handlers.LayerHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "POST", "PUT", "OPTIONS").Name("processes").Path("/processes.{ext}").Handler(&handlers.ProcessesHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "DELETE").Name("process").Path("/processes/{name}.{ext}").Handler(&handlers.ProcessHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "POST", "PUT", "OPTIONS").Name("services").Path("/services.{ext}").Handler(&handlers.ServicesHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "DELETE").Name("service").Path("/services/{name}.{ext}").Handler(&handlers.ServiceHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("POST", "PUT", "OPTIONS").Name("services").Path("/services/exec.{ext}").Handler(&handlers.ServicesExecHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "POST", "PUT", "OPTIONS").Name("jobs").Path("/jobs.{ext}").Handler(&handlers.JobsHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("GET", "DELETE").Name("service").Path("/jobs/{name}.{ext}").Handler(&handlers.JobHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("Get").Name("items").Path("/layers/{name}/items.{ext}").Handler(&handlers.ItemsHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("Get").Name("tile").Path("/layers/{name}/data/tiles/{z}/{x}/{y}.{ext}").Handler(&handlers.TileHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
-
-	r.Methods("Get").Name("mask").Path("/layers/{name}/mask/tiles/{z}/{x}/{y}.{ext}").Handler(&handlers.MaskHandler{
-		BaseHandler: &handlers.BaseHandler{
-			Config:          c,
-			Requests:        requests,
-			Messages:        messages,
-			Errors:          errorsChannel,
-			AwsSessionCache: awsSessionCache,
-			DflFuncs:        dflFuncs,
-		},
-	})
+	r := router.NewRailgunRouter(
+		v,
+		railgunCatalog,
+		requests,
+		messages,
+		errorsChannel,
+		awsSessionCache)
 
 	return r, nil
 }
 
-func NewServer(address string, timeoutIdle time.Duration, timeoutRead time.Duration, timeoutWrite time.Duration, handler http.Handler) *http.Server {
-
-	return &http.Server{
-		Addr:         address,
-		IdleTimeout:  timeoutIdle,
-		ReadTimeout:  timeoutRead,
-		WriteTimeout: timeoutWrite,
-		Handler:      handler,
-	}
-}
-
 func serveFunction(cmd *cobra.Command, args []string) {
 
-	config := railgun.NewConfig(cmd)
-	err := config.Reload()
+	railgunCatalog := catalog.NewRailgunCatalog()
+
+	v := viper.New()
+	v.BindPFlags(cmd.PersistentFlags())
+	v.BindPFlags(cmd.Flags())
+	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	v.AutomaticEnv() // set environment variables to overwrite config
+	util.MergeConfigs(v, v.GetStringArray("config-uri"))
+
+	err := railgunCatalog.LoadFromViper(v)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	verbose := config.GetBool("verbose")
-
-	if verbose {
-		err := config.Print()
+	if uri := v.GetString("catalog-uri"); len(uri) > 0 {
+		err := railgunCatalog.LoadFromFile(uri)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 	}
 
+	verbose := v.GetBool("verbose")
+
+	if verbose {
+		str, err := gss.SerializeString(v.AllSettings(), "properties", gss.NoHeader, gss.NoLimit)
+		if err != nil {
+			fmt.Println(errors.Wrap(err, "error getting all settings for config"))
+			os.Exit(1)
+		}
+		fmt.Println("=================================================")
+		fmt.Println("Configuration:")
+		fmt.Println("-------------------------------------------------")
+		fmt.Println(str)
+		fmt.Println("=================================================")
+	}
+
 	// HTTP Flags
-	address := config.GetString("http-address")
-	httpTimeoutIdle := config.GetDuration("http-timeout-idle")
-	httpTimeoutRead := config.GetDuration("http-timeout-read")
-	httpTimeoutWrite := config.GetDuration("http-timeout-write")
+	address := v.GetString("http-address")
+	httpTimeoutIdle := v.GetDuration("http-timeout-idle")
+	httpTimeoutRead := v.GetDuration("http-timeout-read")
+	httpTimeoutWrite := v.GetDuration("http-timeout-write")
 
 	// Error Flags
-	errorDestination := config.GetString("error-destination")
-	errorCompression := config.GetString("error-compression")
+	errorDestination := v.GetString("error-destination")
+	errorCompression := v.GetString("error-compression")
 
 	// Logging Flags
-	logDestination := config.GetString("log-destination")
-	logCompression := config.GetString("log-compression")
-	logFormat := config.GetString("log-format")
+	logDestination := v.GetString("log-destination")
+	logCompression := v.GetString("log-compression")
+	logFormat := v.GetString("log-format")
 	//logRequestsTile := v.GetBool("log-requests-tile")
 	//logRequestsCache := v.GetBool("log-requests-cache")
 
 	// AWS Flags
-	awsDefaultRegion := config.GetString("aws-default-region")
-	awsAccessKeyId := config.GetString("aws-access-key-id")
-	awsSecretAccessKey := config.GetString("aws-secret-access-key")
-	awsSessionToken := config.GetString("aws-session-token")
+	awsDefaultRegion := v.GetString("aws-default-region")
+	awsAccessKeyId := v.GetString("aws-access-key-id")
+	awsSecretAccessKey := v.GetString("aws-secret-access-key")
+	awsSessionToken := v.GetString("aws-session-token")
 
 	// use StringArray since we don't want to split on comma
-	datastores := config.GetStringArray("datastore")
-	wait := config.GetDuration("wait")
+	wait := v.GetDuration("wait")
 
 	var aws_session *session.Session
 	var s3_client *s3.S3
@@ -436,11 +202,9 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		if verbose {
 			fmt.Println("Connecting to AWS with AWS_ACCESS_KEY_ID " + awsAccessKeyId)
 		}
-		aws_session = railgun.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+		aws_session = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
 		s3_client = s3.New(aws_session)
 	}
-
-	funcs := dfl.NewFuntionMapWithDefaults()
 
 	errorWriter, err := grw.WriteToResource(errorDestination, errorCompression, true, s3_client)
 	if err != nil {
@@ -455,39 +219,27 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	router, err := NewRouter(config, funcs, datastores, errorWriter, logWriter, logFormat, verbose)
+	router, err := NewRouter(v, railgunCatalog, errorWriter, logWriter, logFormat, verbose)
 	if err != nil {
 		errorWriter.WriteString(errors.Wrap(err, "error creating new router").Error())
 		errorWriter.Close()
 		os.Exit(1)
 	}
 
-	corsOrigin := config.GetString("cors-origin")
-	corsCredentials := config.GetString("cors-credentials")
-
-	router.Use(func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", corsOrigin)
-			w.Header().Set("Access-Control-Allow-Credentials", corsCredentials)
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			h.ServeHTTP(w, r)
-		})
-	})
-
 	handler := gorilla_handlers.CompressHandler(router)
 
-	srv := NewServer(
-		address,
-		httpTimeoutIdle,
-		httpTimeoutRead,
-		httpTimeoutWrite,
-		handler)
+	srv := &http.Server{
+		Addr:         address,
+		IdleTimeout:  httpTimeoutIdle,
+		ReadTimeout:  httpTimeoutRead,
+		WriteTimeout: httpTimeoutWrite,
+		Handler:      handler,
+	}
 
 	go func() {
 		if verbose {
 			fmt.Println("starting up server...")
 			fmt.Println("listening on " + srv.Addr)
-			fmt.Println("Using datastores:\n" + strings.Join(datastores, "\n"))
 		}
 		if err := srv.ListenAndServe(); err != nil {
 			fmt.Println(err)
@@ -524,7 +276,7 @@ func init() {
 	serveCmd.Flags().StringArrayP("layer", "l", []string{}, "layer")
 	serveCmd.Flags().StringArrayP("process", "p", []string{}, "process")
 	serveCmd.Flags().StringArrayP("service", "s", []string{}, "service")
-	serveCmd.Flags().StringArrayP("jobs", "j", []string{}, "jobs")
+	serveCmd.Flags().StringArrayP("job", "j", []string{}, "job")
 	serveCmd.Flags().DurationP("duration", "", time.Second*15, "the duration to wait for graceful shutdown")
 
 	// HTTP Flags
@@ -560,5 +312,9 @@ func init() {
 	// CORS Flags
 	serveCmd.Flags().StringP("cors-origin", "", "*", "value for Access-Control-Allow-Origin header")
 	serveCmd.Flags().StringP("cors-credentials", "", "false", "value for Access-Control-Allow-Credentials header")
+
+	// Catalog Skip Errors
+	serveCmd.Flags().String("catalog-uri", "", "uri of the catalog backend")
+	serveCmd.Flags().BoolP("config-skip-errors", "", false, "skip loading config with bad errors")
 
 }
