@@ -4,7 +4,7 @@
 // Released as open source under the MIT License.  See LICENSE file.
 //
 // =================================================================
-package railgunerrors
+package errors
 
 type ErrMissingRequiredParameter struct {
 	Name string

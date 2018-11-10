@@ -5,7 +5,7 @@
 //
 // =================================================================
 
-package railgunerrors
+package errors
 
 type ErrMissingObject struct {
 	Type string

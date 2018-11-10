@@ -8,19 +8,18 @@
 package errors
 
 import (
-	"fmt"
-	"reflect"
+	"github.com/spatialcurrent/go-simple-serializer/gss"
 )
 
-type ErrInvalidType struct {
-	Type  reflect.Type
+type ErrInvalidObject struct {
 	Value interface{}
 }
 
-func (e *ErrInvalidType) Error() string {
-	str := "invalid type " + fmt.Sprint(reflect.TypeOf(e.Value))
-	if reflect.ValueOf(e.Type).IsValid() {
-		str += ", expecting " + fmt.Sprint(e.Type)
+func (e *ErrInvalidObject) Error() string {
+	str := "invalid object"
+	value, err := gss.SerializeString(e.Value, "json", gss.NoHeader, gss.NoLimit)
+	if err == nil {
+		str += " : " + value
 	}
 	return str
 }

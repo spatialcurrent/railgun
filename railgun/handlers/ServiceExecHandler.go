@@ -9,29 +9,30 @@ package handlers
 
 import (
 	//"fmt"
+	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/go-try-get/gtg"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/parser"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"net/http"
 	//"reflect"
 )
 
-type ServicesExecHandler struct {
+type ServiceExecHandler struct {
 	*BaseHandler
 }
 
-func (h *ServicesExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
 	switch r.Method {
 	case "POST":
-		obj, err := h.Post(w, r, format)
+		obj, err := h.Post(w, r, format, mux.Vars(r))
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
@@ -58,16 +59,11 @@ func (h *ServicesExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 }
 
-func (h *ServicesExecHandler) Post(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
+func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (interface{}, error) {
 
-	obj, err := h.ParseBody(r, format)
-	if err != nil {
-		return nil, err
-	}
-
-	serviceName := gtg.TryGetString(obj, "service", "")
-	if len(serviceName) == 0 {
-		return nil, &rerrors.ErrMissingRequiredParameter{Name: "service"}
+	serviceName, ok := vars["name"]
+	if !ok {
+		return nil, &rerrors.ErrMissingRequiredParameter{Name: "name"}
 	}
 
 	service, ok := h.Catalog.GetService(serviceName)
@@ -75,20 +71,29 @@ func (h *ServicesExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 		return nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
 	}
 
-	vars := map[string]interface{}{}
-	for k, v := range service.Defaults {
-		vars[k] = v
+	obj, err := h.ParseBody(r, format)
+	if err != nil {
+		return nil, err
 	}
 
-	variables, err := parser.ParseMap(obj, "variables")
+	variables := map[string]interface{}{}
+	for k, v := range service.Defaults {
+		variables[k] = v
+	}
+
+	jobVariables, err := parser.ParseMap(obj, "variables")
 	if err != nil {
 		return nil, &rerrors.ErrInvalidParameter{Name: "variables", Value: gtg.TryGetString(obj, "variables", "")}
 	}
-	for k, v := range variables {
-		vars[k] = v
+	//jobVariablesValue := reflect.ValueOf(jobVariables)
+	//for _, k := range jobVariablesValue.MapKeys() {
+	//  variables[fmt.Sprint(k.Interface())] = jobVariablesValue.MapIndex(k).Interface()
+	//}
+	for k, v := range jobVariables {
+		variables[k] = v
 	}
 
-	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, vars, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid data store uri")
 	}
@@ -110,12 +115,12 @@ func (h *ServicesExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 		return nil, errors.Wrap(err, "error getting type for input")
 	}
 
-	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, "", false, gss.NoLimit, inputType, false)
+	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoLimit, inputType, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
 	}
 
-	_, outputObject, err := service.Process.Node.Evaluate(vars, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	_, outputObject, err := service.Process.Node.Evaluate(variables, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
 	}

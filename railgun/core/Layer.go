@@ -8,8 +8,8 @@
 package core
 
 import (
-	"github.com/spatialcurrent/railgun/railgun/cache"
 	"github.com/spatialcurrent/go-dfl/dfl"
+	"github.com/spatialcurrent/railgun/railgun/cache"
 	"reflect"
 )
 

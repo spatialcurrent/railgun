@@ -8,23 +8,23 @@
 package catalog
 
 import (
-  "fmt"
-  "os"
-  "github.com/spf13/viper"
-	"github.com/spatialcurrent/railgun/railgun/core"
-	"github.com/spatialcurrent/go-try-get/gtg"
-	"github.com/spatialcurrent/go-dfl/dfl"
-	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/go-reader-writer/grw"
-	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
-	"github.com/spatialcurrent/railgun/railgun/util"
-	"github.com/spatialcurrent/railgun/railgun/cache"
-	"github.com/spatialcurrent/railgun/railgun/parser"
-	"reflect"
-	"sync"
-	"strings"
-	"path/filepath"
+	"fmt"
 	"github.com/pkg/errors"
+	"github.com/spatialcurrent/go-dfl/dfl"
+	"github.com/spatialcurrent/go-reader-writer/grw"
+	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/go-try-get/gtg"
+	"github.com/spatialcurrent/railgun/railgun/cache"
+	"github.com/spatialcurrent/railgun/railgun/core"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/parser"
+	"github.com/spatialcurrent/railgun/railgun/util"
+	"github.com/spf13/viper"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync"
 )
 
 type RailgunCatalog struct {
@@ -469,35 +469,35 @@ func (c *RailgunCatalog) DeleteItem(name string, t reflect.Type) error {
 	return &rerrors.ErrInvalidType{Value: t}
 }
 
-func (c *RailgunCatalog) ListWorkspaces() []core.Workspace {
-	return c.Catalog.List(core.WorkspaceType).([]core.Workspace)
+func (c *RailgunCatalog) ListWorkspaces() []*core.Workspace {
+	return c.Catalog.List(core.WorkspaceType).([]*core.Workspace)
 }
 
-func (c *RailgunCatalog) ListDataStores() []core.DataStore {
-	return c.Catalog.List(core.DataStoreType).([]core.DataStore)
+func (c *RailgunCatalog) ListDataStores() []*core.DataStore {
+	return c.Catalog.List(core.DataStoreType).([]*core.DataStore)
 }
 
-func (c *RailgunCatalog) ListLayers() []core.Layer {
-	return c.Catalog.List(core.LayerType).([]core.Layer)
+func (c *RailgunCatalog) ListLayers() []*core.Layer {
+	return c.Catalog.List(core.LayerType).([]*core.Layer)
 }
 
-func (c *RailgunCatalog) ListProcesses() []core.Process {
-	return c.Catalog.List(core.ProcessType).([]core.Process)
+func (c *RailgunCatalog) ListProcesses() []*core.Process {
+	return c.Catalog.List(core.ProcessType).([]*core.Process)
 }
 
-func (c *RailgunCatalog) ListServices() []core.Service {
-	return c.Catalog.List(core.ServiceType).([]core.Service)
+func (c *RailgunCatalog) ListServices() []*core.Service {
+	return c.Catalog.List(core.ServiceType).([]*core.Service)
 }
 
-func (c *RailgunCatalog) ListJobs() []core.Job {
-	return c.Catalog.List(core.JobType).([]core.Job)
+func (c *RailgunCatalog) ListJobs() []*core.Job {
+	return c.Catalog.List(core.JobType).([]*core.Job)
 }
 
-func (c *RailgunCatalog) ListWorkflows() []core.Workflow {
-	return c.Catalog.List(core.WorkflowType).([]core.Workflow)
+func (c *RailgunCatalog) ListWorkflows() []*core.Workflow {
+	return c.Catalog.List(core.WorkflowType).([]*core.Workflow)
 }
 
-func (c *RailgunCatalog) LoadFromFile(uri string) error {
+func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser, errorWriter grw.ByteWriteCloser) error {
 
 	raw, err := func(uri string) (interface{}, error) {
 
@@ -547,362 +547,388 @@ func (c *RailgunCatalog) LoadFromFile(uri string) error {
 		return nil
 	}
 
-
 	if t := reflect.TypeOf(raw); t.Kind() == reflect.Map {
 		v := reflect.ValueOf(raw)
-		for _, k := range v.MapKeys() {
-			switch fmt.Sprint(k.Interface()) {
-			case "workspace":
-				listValue := v.MapIndex(k)
-				listType := reflect.TypeOf(listValue.Interface())
-				if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
-					length := listValue.Len()
-					for i := 0; i < length; i++ {
-						obj, err := c.ParseWorkspace(listValue.Index(i).Interface())
-						if err != nil {
-							fmt.Println("Error loading workspace from:")
-							fmt.Println(obj)
-							continue
-						}
-						c.Add(obj)
+
+		key := "workspace"
+		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
+			listValue := reflect.ValueOf(list.Interface())
+			listType := listValue.Type()
+			if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
+				length := listValue.Len()
+				for i := 0; i < length; i++ {
+					m := listValue.Index(i).Interface()
+					obj, err := c.ParseWorkspace(m)
+					if err != nil {
+						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading workspace"))
+						continue
 					}
-				}
-			case "datastore":
-				listValue := v.MapIndex(k)
-				listType := reflect.TypeOf(listValue.Interface())
-				if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
-					length := listValue.Len()
-					for i := 0; i < length; i++ {
-						obj, err := c.ParseDataStore(listValue.Index(i).Interface())
-						if err != nil {
-							fmt.Println("Error loading data store  from:")
-							fmt.Println(obj)
-							continue
-						}
-						c.Add(obj)
-					}
-				}
-			case "layer":
-				listValue := v.MapIndex(k)
-				listType := reflect.TypeOf(listValue.Interface())
-				if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
-					length := listValue.Len()
-					for i := 0; i < length; i++ {
-						obj, err := c.ParseLayer(listValue.Index(i).Interface())
-						if err != nil {
-							fmt.Println("Error loading layer from:")
-							fmt.Println(obj)
-							continue
-						}
-						c.Add(obj)
-					}
-				}
-			case "process":
-				listValue := v.MapIndex(k)
-				listType := reflect.TypeOf(listValue.Interface())
-				if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
-					length := listValue.Len()
-					for i := 0; i < length; i++ {
-						obj, err := c.ParseProcess(listValue.Index(i).Interface())
-						if err != nil {
-							fmt.Println("Error loading process from:")
-							fmt.Println(obj)
-							continue
-						}
-						c.Add(obj)
-					}
-				}
-			case "service":
-				listValue := v.MapIndex(k)
-				listType := reflect.TypeOf(listValue.Interface())
-				if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
-					length := listValue.Len()
-					for i := 0; i < length; i++ {
-						obj, err := c.ParseService(listValue.Index(i).Interface())
-						if err != nil {
-							fmt.Println("Error loading service from:")
-							fmt.Println(obj)
-							continue
-						}
-						c.Add(obj)
-					}
-				}
-			case "job":
-				listValue := v.MapIndex(k)
-				listType := reflect.TypeOf(listValue.Interface())
-				if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
-					length := listValue.Len()
-					for i := 0; i < length; i++ {
-						obj, err := c.ParseJob(listValue.Index(i).Interface())
-						if err != nil {
-							fmt.Println("Error loading job from:")
-							fmt.Println(obj)
-							continue
-						}
-						c.Add(obj)
-					}
-				}
-			case "workflow":
-				listValue := v.MapIndex(k)
-				listType := reflect.TypeOf(listValue.Interface())
-				if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
-					length := listValue.Len()
-					for i := 0; i < length; i++ {
-						obj, err := c.ParseWorkflow(listValue.Index(i).Interface())
-						if err != nil {
-							fmt.Println("Error loading workflow from:")
-							fmt.Println(obj)
-							continue
-						}
-						c.Add(obj)
-					}
+					c.Add(obj)
+					logWriter.WriteLine("* loaded workspace with name " + obj.Name)
 				}
 			}
 		}
+
+		key = "datastore"
+		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
+			listValue := reflect.ValueOf(list.Interface())
+			listType := listValue.Type()
+			if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
+				length := listValue.Len()
+				for i := 0; i < length; i++ {
+					m := listValue.Index(i).Interface()
+					obj, err := c.ParseDataStore(m)
+					if err != nil {
+						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading data store"))
+						continue
+					}
+					c.Add(obj)
+					logWriter.WriteLine("* loaded data store with name " + obj.Name)
+				}
+			}
+		}
+
+		key = "layer"
+		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
+			listValue := reflect.ValueOf(list.Interface())
+			listType := listValue.Type()
+			if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
+				length := listValue.Len()
+				for i := 0; i < length; i++ {
+					m := listValue.Index(i).Interface()
+					obj, err := c.ParseLayer(m)
+					if err != nil {
+						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading layer"))
+						continue
+					}
+					c.Add(obj)
+					logWriter.WriteLine("* loaded layer with name " + obj.Name)
+				}
+			}
+		}
+
+		key = "process"
+		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
+			listValue := reflect.ValueOf(list.Interface())
+			listType := listValue.Type()
+			if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
+				length := listValue.Len()
+				for i := 0; i < length; i++ {
+					m := listValue.Index(i).Interface()
+					obj, err := c.ParseProcess(m)
+					if err != nil {
+						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading process"))
+						continue
+					}
+					c.Add(obj)
+					logWriter.WriteLine("* loaded process with name " + obj.Name)
+				}
+			}
+		}
+
+		key = "service"
+		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
+			listValue := reflect.ValueOf(list.Interface())
+			listType := listValue.Type()
+			if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
+				length := listValue.Len()
+				for i := 0; i < length; i++ {
+					m := listValue.Index(i).Interface()
+					obj, err := c.ParseService(m)
+					if err != nil {
+						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading service"))
+						errorWriter.WriteError(err)
+						continue
+					}
+					c.Add(obj)
+					logWriter.WriteLine("* loaded service with name " + obj.Name)
+				}
+			}
+		}
+
+		key = "job"
+		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
+			listValue := reflect.ValueOf(list.Interface())
+			listType := listValue.Type()
+			if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
+				length := listValue.Len()
+				for i := 0; i < length; i++ {
+					m := listValue.Index(i).Interface()
+					obj, err := c.ParseJob(m)
+					if err != nil {
+						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading job"))
+						continue
+					}
+					c.Add(obj)
+					logWriter.WriteLine("* loaded job with name " + obj.Name)
+				}
+			}
+		}
+
+		key = "workflow"
+		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
+			listValue := reflect.ValueOf(list.Interface())
+			listType := listValue.Type()
+			if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
+				length := listValue.Len()
+				for i := 0; i < length; i++ {
+					m := listValue.Index(i).Interface()
+					obj, err := c.ParseWorkflow(m)
+					if err != nil {
+						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading workflow"))
+						errorWriter.WriteError(err)
+						continue
+					}
+					c.Add(obj)
+					logWriter.WriteLine("* loaded workflow with name " + obj.Name)
+				}
+			}
+		}
+
 	}
-	
+
 	return nil
 }
 
 func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
-  
-  workspacesByName, err := func(workspaces []string) (map[string]*core.Workspace, error) {
-    workspacesByName := map[string]*core.Workspace{}
-  	for _, str := range workspaces {
-  		if !strings.HasPrefix(str, "{") {
-  			return workspacesByName, &rerrors.ErrInvalidConfig{Name: "workspace", Value: str}
-  		}
-  		_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-  		if err != nil {
-  			return workspacesByName, &rerrors.ErrInvalidConfig{Name: "workspace", Value: str}
-  		}
-  		ws, err := c.ParseWorkspace(m)
-  		if err != nil {
-  			return workspacesByName, errors.Wrap(err, "error parsing workspace")
-  		}
-  		workspacesByName[ws.Name] = ws
-  	}
-  	if _, ok := workspacesByName["default"]; !ok {
-  		workspacesByName["default"] = core.NewDefaultWorkspace()
-  	}
-  	return workspacesByName, nil
-  }(v.GetStringArray("workspace"))
-  
-  if err != nil {
-    return err
-  }
-  
-  for _, workspace := range workspacesByName {
-    c.Add(workspace)
-  }
-  
-  datastoresByName, err := func(datastores []string, configSkipErrors bool) (map[string]*core.DataStore, error) {
-    datastoresByName := map[string]*core.DataStore{}
-  	for _, str := range datastores {
-  		if !strings.HasPrefix(str, "{") {
-  			_, uriPath := grw.SplitUri(str)
-  			name, format, compression := util.SplitNameFormatCompression(filepath.Base(uriPath))
-  			if len(name) == 0 {
-  				return datastoresByName, &rerrors.ErrInvalidConfig{Name: "datastore", Value: str}
-  			}
-  			if len(format) == 0 {
-  				return datastoresByName, &rerrors.ErrInvalidConfig{Name: "datastore", Value: str}
-  			}
-  			ds := &core.DataStore{
-  				Name:        name,
-  				Title:       name,
-  				Description: name,
-  				Uri:         &dfl.Literal{Value: str},
-  				Format:      format,
-  				Compression: compression,
-  				Extent:      make([]float64, 0),
-  			}
-  			datastoresByName[ds.Name] = ds
-  		} else {
-  			_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-  			if err != nil {
-  				return datastoresByName, &rerrors.ErrInvalidConfig{Name: "datastore", Value: str}
-  			}
-  			ds, err := c.ParseDataStore(m)
-  			if err != nil {
-  				if configSkipErrors {
-  					fmt.Fprint(os.Stderr, err.Error()+"\n")
-  					continue
-  				} else {
-  					return datastoresByName, errors.Wrap(err, "error parsing data store")
-  				}
-  			}
-  			datastoresByName[ds.Name] = ds
-  		}
-  	}
-  	return datastoresByName, nil
-  }(v.GetStringArray("datastore"), v.GetBool("config-skip-errors"))
-  
-  if err != nil {
-    return err
-  }
-  
-  for _, datastore := range datastoresByName {
-    c.Add(datastore)
-  }
-  
-  layersByName, err := func(layers []string) (map[string]*core.Layer, error) {
-    layersByName := map[string]*core.Layer{}
-  	for _, str := range layers {
-  		if !strings.HasPrefix(str, "{") {
-  			return layersByName, &rerrors.ErrInvalidConfig{Name: "layer", Value: str}
-  		}
-  		_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-  		if err != nil {
-  			return layersByName, &rerrors.ErrInvalidConfig{Name: "layer", Value: str}
-  		}
-  		l, err := c.ParseLayer(m)
-  		if err != nil {
-  			return layersByName, errors.Wrap(err, "error parsing layer")
-  		}
-  		layersByName[l.Name] = l
-  	}
-  	return layersByName, nil
-  } (v.GetStringArray("layer"))
-  
-  if err != nil {
-    return err
-  }
-  
-  for _, layer := range layersByName {
-    c.Add(layer)
-  }
-  
-  processesByName, err := func(processes []string) (map[string]*core.Process, error) {
-    processesByName := map[string]*core.Process{}
-  	for _, str := range processes {
-  		if !strings.HasPrefix(str, "{") {
-  			return processesByName, &rerrors.ErrInvalidConfig{Name: "process", Value: str}
-  		}
-  		_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-  		if err != nil {
-  			return processesByName, &rerrors.ErrInvalidConfig{Name: "process", Value: str}
-  		}
-  		p, err := c.ParseProcess(m)
-  		if err != nil {
-  			return processesByName, errors.Wrap(err, "error parsing process")
-  		}
-  		processesByName[p.Name] = p
-  	}
-  	return processesByName, nil
-  } (v.GetStringArray("process"))
-  
-  if err != nil {
-    return err
-  }
-  
-  for _, process := range processesByName {
-    c.Add(process)
-  }
-  
-  servicesByName, err := func(services []string, configSkipErrors bool) (map[string]*core.Service, error) {
-    servicesByName := map[string]*core.Service{}
-    for _, str := range services {
-  		if !strings.HasPrefix(str, "{") {
-  			return servicesByName, &rerrors.ErrInvalidConfig{Name: "service", Value: str}
-  		}
-  		_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-  		if err != nil {
-  			return servicesByName, &rerrors.ErrInvalidConfig{Name: "service", Value: str}
-  		}
-  		s, err := c.ParseService(m)
-  		if err != nil {
-  			if configSkipErrors {
-  				fmt.Fprint(os.Stderr, err.Error()+"\n")
-  				continue
-  			} else {
-  				return servicesByName, errors.Wrap(err, "error parsing service")
-  			}
-  		}
-  		servicesByName[s.Name] = s
-  	}
-  	return servicesByName, nil
-  } (v.GetStringArray("service"), v.GetBool("config-skip-errors"))
-  
-  if err != nil {
-    return err
-  }
-  
-  for _, service := range servicesByName {
-    c.Add(service)
-  }
-  
-  jobsByName, err := func(jobs []string, configSkipErrors bool) (map[string]*core.Job, error) {
-    jobsByName := map[string]*core.Job{}
-  	for _, str := range jobs {
-  		if !strings.HasPrefix(str, "{") {
-  			return jobsByName, &rerrors.ErrInvalidConfig{Name: "job", Value: str}
-  		}
-  		_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-  		if err != nil {
-  			return jobsByName, &rerrors.ErrInvalidConfig{Name: "job", Value: str}
-  		}
-  		j, err := c.ParseJob(m)
-  		if err != nil {
-  			if configSkipErrors {
-  				fmt.Fprint(os.Stderr, err.Error()+"\n")
-  				continue
-  			} else {
-  				return jobsByName, errors.Wrap(err, "error parsing job")
-  			}
-  		}
-  		jobsByName[j.Name] = j
-  	}
-  	return jobsByName, nil
-  } (v.GetStringArray("job"), v.GetBool("config-skip-errors"))
-  
-  if err != nil {
-    return err
-  }
-  
-  for _, job := range jobsByName {
-    c.Add(job)
-  }
-  
-  workflowsByName, err := func(workflows []string, configSkipErrors bool) (map[string]*core.Workflow, error) {
-    workflowsByName := map[string]*core.Workflow{}
-    for _, str := range workflows {
-  		if !strings.HasPrefix(str, "{") {
-  			return workflowsByName, &rerrors.ErrInvalidConfig{Name: "workflow", Value: str}
-  		}
-  		_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-  		if err != nil {
-  			return workflowsByName, &rerrors.ErrInvalidConfig{Name: "workflow", Value: str}
-  		}
-  		wf, err := c.ParseWorkflow(m)
-  		if err != nil {
-  			if configSkipErrors {
-  				fmt.Fprint(os.Stderr, err.Error()+"\n")
-  				continue
-  			} else {
-  				return workflowsByName, errors.Wrap(err, "error parsing workflow")
-  			}
-  		}
-  		workflowsByName[wf.Name] = wf
-  	}
-  	return workflowsByName, nil
-  } (v.GetStringArray("workflow"), v.GetBool("config-skip-errors"))
-  
-  if err != nil {
-    return err
-  }
-  
-  for _, workflow := range workflowsByName {
-    c.Add(workflow)
-  }
-  
-  return nil
-  
+
+	workspacesByName, err := func(workspaces []string) (map[string]*core.Workspace, error) {
+		workspacesByName := map[string]*core.Workspace{}
+		for _, str := range workspaces {
+			if !strings.HasPrefix(str, "{") {
+				return workspacesByName, &rerrors.ErrInvalidConfig{Name: "workspace", Value: str}
+			}
+			_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+			if err != nil {
+				return workspacesByName, &rerrors.ErrInvalidConfig{Name: "workspace", Value: str}
+			}
+			ws, err := c.ParseWorkspace(m)
+			if err != nil {
+				return workspacesByName, errors.Wrap(err, "error parsing workspace")
+			}
+			workspacesByName[ws.Name] = ws
+		}
+		if _, ok := workspacesByName["default"]; !ok {
+			workspacesByName["default"] = core.NewDefaultWorkspace()
+		}
+		return workspacesByName, nil
+	}(v.GetStringArray("workspace"))
+
+	if err != nil {
+		return err
+	}
+
+	for _, workspace := range workspacesByName {
+		c.Add(workspace)
+	}
+
+	datastoresByName, err := func(datastores []string, configSkipErrors bool) (map[string]*core.DataStore, error) {
+		datastoresByName := map[string]*core.DataStore{}
+		for _, str := range datastores {
+			if !strings.HasPrefix(str, "{") {
+				_, uriPath := grw.SplitUri(str)
+				name, format, compression := util.SplitNameFormatCompression(filepath.Base(uriPath))
+				if len(name) == 0 {
+					return datastoresByName, &rerrors.ErrInvalidConfig{Name: "datastore", Value: str}
+				}
+				if len(format) == 0 {
+					return datastoresByName, &rerrors.ErrInvalidConfig{Name: "datastore", Value: str}
+				}
+				ds := &core.DataStore{
+					Name:        name,
+					Title:       name,
+					Description: name,
+					Uri:         &dfl.Literal{Value: str},
+					Format:      format,
+					Compression: compression,
+					Extent:      make([]float64, 0),
+				}
+				datastoresByName[ds.Name] = ds
+			} else {
+				_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+				if err != nil {
+					return datastoresByName, &rerrors.ErrInvalidConfig{Name: "datastore", Value: str}
+				}
+				ds, err := c.ParseDataStore(m)
+				if err != nil {
+					if configSkipErrors {
+						fmt.Fprint(os.Stderr, err.Error()+"\n")
+						continue
+					} else {
+						return datastoresByName, errors.Wrap(err, "error parsing data store")
+					}
+				}
+				datastoresByName[ds.Name] = ds
+			}
+		}
+		return datastoresByName, nil
+	}(v.GetStringArray("datastore"), v.GetBool("config-skip-errors"))
+
+	if err != nil {
+		return err
+	}
+
+	for _, datastore := range datastoresByName {
+		c.Add(datastore)
+	}
+
+	layersByName, err := func(layers []string) (map[string]*core.Layer, error) {
+		layersByName := map[string]*core.Layer{}
+		for _, str := range layers {
+			if !strings.HasPrefix(str, "{") {
+				return layersByName, &rerrors.ErrInvalidConfig{Name: "layer", Value: str}
+			}
+			_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+			if err != nil {
+				return layersByName, &rerrors.ErrInvalidConfig{Name: "layer", Value: str}
+			}
+			l, err := c.ParseLayer(m)
+			if err != nil {
+				return layersByName, errors.Wrap(err, "error parsing layer")
+			}
+			layersByName[l.Name] = l
+		}
+		return layersByName, nil
+	}(v.GetStringArray("layer"))
+
+	if err != nil {
+		return err
+	}
+
+	for _, layer := range layersByName {
+		c.Add(layer)
+	}
+
+	processesByName, err := func(processes []string) (map[string]*core.Process, error) {
+		processesByName := map[string]*core.Process{}
+		for _, str := range processes {
+			if !strings.HasPrefix(str, "{") {
+				return processesByName, &rerrors.ErrInvalidConfig{Name: "process", Value: str}
+			}
+			_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+			if err != nil {
+				return processesByName, &rerrors.ErrInvalidConfig{Name: "process", Value: str}
+			}
+			p, err := c.ParseProcess(m)
+			if err != nil {
+				return processesByName, errors.Wrap(err, "error parsing process")
+			}
+			processesByName[p.Name] = p
+		}
+		return processesByName, nil
+	}(v.GetStringArray("process"))
+
+	if err != nil {
+		return err
+	}
+
+	for _, process := range processesByName {
+		c.Add(process)
+	}
+
+	servicesByName, err := func(services []string, configSkipErrors bool) (map[string]*core.Service, error) {
+		servicesByName := map[string]*core.Service{}
+		for _, str := range services {
+			if !strings.HasPrefix(str, "{") {
+				return servicesByName, &rerrors.ErrInvalidConfig{Name: "service", Value: str}
+			}
+			_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+			if err != nil {
+				return servicesByName, &rerrors.ErrInvalidConfig{Name: "service", Value: str}
+			}
+			s, err := c.ParseService(m)
+			if err != nil {
+				if configSkipErrors {
+					fmt.Fprint(os.Stderr, err.Error()+"\n")
+					continue
+				} else {
+					return servicesByName, errors.Wrap(err, "error parsing service")
+				}
+			}
+			servicesByName[s.Name] = s
+		}
+		return servicesByName, nil
+	}(v.GetStringArray("service"), v.GetBool("config-skip-errors"))
+
+	if err != nil {
+		return err
+	}
+
+	for _, service := range servicesByName {
+		c.Add(service)
+	}
+
+	jobsByName, err := func(jobs []string, configSkipErrors bool) (map[string]*core.Job, error) {
+		jobsByName := map[string]*core.Job{}
+		for _, str := range jobs {
+			if !strings.HasPrefix(str, "{") {
+				return jobsByName, &rerrors.ErrInvalidConfig{Name: "job", Value: str}
+			}
+			_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+			if err != nil {
+				return jobsByName, &rerrors.ErrInvalidConfig{Name: "job", Value: str}
+			}
+			j, err := c.ParseJob(m)
+			if err != nil {
+				if configSkipErrors {
+					fmt.Fprint(os.Stderr, err.Error()+"\n")
+					continue
+				} else {
+					return jobsByName, errors.Wrap(err, "error parsing job")
+				}
+			}
+			jobsByName[j.Name] = j
+		}
+		return jobsByName, nil
+	}(v.GetStringArray("job"), v.GetBool("config-skip-errors"))
+
+	if err != nil {
+		return err
+	}
+
+	for _, job := range jobsByName {
+		c.Add(job)
+	}
+
+	workflowsByName, err := func(workflows []string, configSkipErrors bool) (map[string]*core.Workflow, error) {
+		workflowsByName := map[string]*core.Workflow{}
+		for _, str := range workflows {
+			if !strings.HasPrefix(str, "{") {
+				return workflowsByName, &rerrors.ErrInvalidConfig{Name: "workflow", Value: str}
+			}
+			_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+			if err != nil {
+				return workflowsByName, &rerrors.ErrInvalidConfig{Name: "workflow", Value: str}
+			}
+			wf, err := c.ParseWorkflow(m)
+			if err != nil {
+				if configSkipErrors {
+					fmt.Fprint(os.Stderr, err.Error()+"\n")
+					continue
+				} else {
+					return workflowsByName, errors.Wrap(err, "error parsing workflow")
+				}
+			}
+			workflowsByName[wf.Name] = wf
+		}
+		return workflowsByName, nil
+	}(v.GetStringArray("workflow"), v.GetBool("config-skip-errors"))
+
+	if err != nil {
+		return err
+	}
+
+	for _, workflow := range workflowsByName {
+		c.Add(workflow)
+	}
+
+	return nil
+
 }
 
 func (c *RailgunCatalog) SaveToFile(uri string) error {
 
-	data := c.SafeDump()
+	data := c.Dump()
 
 	err := func(data map[string]interface{}, uri string) error {
 
@@ -936,7 +962,7 @@ func (c *RailgunCatalog) SaveToFile(uri string) error {
 		if err != nil {
 			return errors.Wrap(err, "error closing file")
 		}
-		
+
 		return nil
 
 	}(data, uri)

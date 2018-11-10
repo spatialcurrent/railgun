@@ -8,6 +8,7 @@
 package catalog
 
 import (
+	"fmt"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"reflect"
@@ -40,15 +41,19 @@ func (c *Catalog) Unlock() {
 }
 
 func (c *Catalog) Get(name string, t reflect.Type) (core.Base, bool) {
-	typeName := t.Elem().Name()
+	typeName := ""
+	if t.Kind() == reflect.Ptr {
+		typeName = t.Elem().Name()
+	} else {
+		typeName = t.Name()
+	}
 	if index, ok := c.indices[typeName]; ok {
 		if position, ok := index[name]; ok {
 			if objects, ok := c.objects[typeName]; ok {
+				fmt.Println("Position:", position)
 				obj := reflect.ValueOf(objects).Index(position).Interface()
-				if reflect.TypeOf(obj).AssignableTo(t) {
-					if base, ok := obj.(core.Base); ok {
-						return base, true
-					}
+				if base, ok := obj.(core.Base); ok {
+					return base, true
 				}
 			}
 		}
@@ -73,7 +78,7 @@ func (c *Catalog) Add(obj interface{}) error {
 		if _, ok := c.indices[typeName][n.GetName()]; ok {
 			return &rerrors.ErrAlreadyExists{Name: typeName, Value: n.GetName()}
 		}
-		c.indices[typeName][n.GetName()] = reflect.ValueOf(c.objects[typeName]).Len()
+		c.indices[typeName][n.GetName()] = reflect.ValueOf(c.objects[typeName]).Len() - 1
 	}
 
 	return nil
@@ -81,12 +86,12 @@ func (c *Catalog) Add(obj interface{}) error {
 }
 
 func (c *Catalog) Delete(name string, t reflect.Type) error {
-	typeName := t.Elem().Name()
+	typeName := t.Name()
 	if index, ok := c.indices[typeName]; ok {
 		if position, ok := index[name]; ok {
 			if list, ok := c.objects[typeName]; ok {
 				listValue := reflect.ValueOf(list)
-				c.objects[typeName] = reflect.Append(listValue.Slice(0, position), listValue.Slice(position+1, listValue.Len())).Interface()
+				c.objects[typeName] = reflect.AppendSlice(listValue.Slice(0, position), listValue.Slice(position+1, listValue.Len())).Interface()
 			}
 			delete(index, name)
 			return nil
@@ -96,11 +101,16 @@ func (c *Catalog) Delete(name string, t reflect.Type) error {
 }
 
 func (c *Catalog) List(t reflect.Type) interface{} {
-	typeName := t.Elem().Name()
-	if list, ok := c.objects[typeName]; ok {
-		return list
+	if t.Kind() == reflect.Ptr {
+		if list, ok := c.objects[t.Elem().Name()]; ok {
+			return list
+		}
+	} else {
+		if list, ok := c.objects[t.Name()]; ok {
+			return list
+		}
 	}
-	return reflect.MakeSlice(reflect.SliceOf(t), 0, 0)
+	return reflect.MakeSlice(reflect.SliceOf(t), 0, 0).Interface()
 }
 
 func (c *Catalog) Dump() map[string]interface{} {

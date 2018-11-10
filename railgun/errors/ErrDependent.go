@@ -5,7 +5,7 @@
 //
 // =================================================================
 
-package railgunerrors
+package errors
 
 type ErrDependent struct {
 	Type          string

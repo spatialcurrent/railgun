@@ -1,29 +1,29 @@
 package router
 
 import (
-  "fmt"
+	"fmt"
 	gocache "github.com/patrickmn/go-cache"
-	"github.com/spatialcurrent/railgun/railgun/catalog"
 	"github.com/spatialcurrent/go-adaptive-functions/af"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spf13/viper"
+	"github.com/spatialcurrent/railgun/railgun/catalog"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	"github.com/spatialcurrent/railgun/railgun/handlers"
 	"github.com/spatialcurrent/railgun/railgun/request"
-	"strings"
+	"github.com/spf13/viper"
 	"reflect"
+	"strings"
 )
 
 type RailgunRouter struct {
 	*Router
-	Viper  *viper.Viper
+	Viper   *viper.Viper
 	Catalog *catalog.RailgunCatalog
 }
 
 func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, requests chan request.Request, messages chan interface{}, errors chan error, awsSessionCache *gocache.Cache) *RailgunRouter {
 
 	r := &RailgunRouter{
-		Viper:  v,
+		Viper:   v,
 		Catalog: railgunCatalog,
 		Router:  NewRouter(requests, messages, errors, awsSessionCache),
 	}
@@ -91,23 +91,25 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 
 		r.AddGroupHandler(
 			strings.ToLower(strings.Replace(route.Plural, " ", "", -1)),
-			fmt.Sprint("/%s.{ext}", strings.ToLower(strings.Replace(route.Plural, " ", "", -1))),
+			fmt.Sprintf("/%s.{ext}", strings.ToLower(strings.Replace(route.Plural, " ", "", -1))),
 			route.Type,
 		)
 
 		r.AddItemHandler(
 			strings.ToLower(strings.Replace(route.Singular, " ", "", -1)),
-			fmt.Sprint("/%s/{name}.{ext}", strings.ToLower(strings.Replace(route.Plural, " ", "", -1))),
+			fmt.Sprintf("/%s/{name}.{ext}", strings.ToLower(strings.Replace(route.Plural, " ", "", -1))),
 			route.Type,
+			route.Singular,
+			route.Plural,
 		)
 
 	}
 
-	r.AddServicesExecHandler("services_exec", "/services/exec.{ext}")
+	r.AddServiceExecHandler("service_exec", "/services/{name}/exec.{ext}")
 
-	r.AddServicesExecHandler("job_exec", "/jobs/{name}/exec.{ext}")
+	r.AddJobExecHandler("job_exec", "/jobs/{name}/exec.{ext}")
 
-	r.AddServicesExecHandler("workflow_exec", "/workflows/{name}/exec.{ext}")
+	r.AddWorkflowExecHandler("workflow_exec", "/workflows/{name}/exec.{ext}")
 
 	r.AddTileHandler("tile", "/layers/{name}/data/tiles/{z}/{x}/{y}.{ext}")
 
@@ -118,7 +120,8 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 
 func (r *RailgunRouter) NewBaseHandler() *handlers.BaseHandler {
 	return &handlers.BaseHandler{
-		Viper:          r.Viper,
+		Viper:           r.Viper,
+		Catalog:         r.Catalog,
 		Requests:        r.Requests,
 		Messages:        r.Messages,
 		Errors:          r.Errors,
@@ -134,14 +137,19 @@ func (r *RailgunRouter) AddObjectHandler(name string, path string, object interf
 }
 
 func (r *RailgunRouter) AddGroupHandler(name string, path string, t reflect.Type) {
+
+	fmt.Println("Adding group handler " + name + " at path " + path)
+
 	r.Methods("GET", "POST", "PUT", "OPTIONS").Name(name).Path(path).Handler(&handlers.GroupHandler{
 		Type:        t,
 		BaseHandler: r.NewBaseHandler(),
 	})
 }
 
-func (r *RailgunRouter) AddItemHandler(name string, path string, t reflect.Type) {
+func (r *RailgunRouter) AddItemHandler(name string, path string, t reflect.Type, singular string, plural string) {
 	r.Methods("GET", "DELETE").Name(name).Path(path).Handler(&handlers.ItemHandler{
+		Singular:    singular,
+		Plural:      plural,
 		Type:        t,
 		BaseHandler: r.NewBaseHandler(),
 	})
@@ -159,8 +167,8 @@ func (r *RailgunRouter) AddHomeHandler(name string, path string) {
 	})
 }
 
-func (r *RailgunRouter) AddServicesExecHandler(name string, path string) {
-	r.Methods("POST", "OPTIONS").Name(name).Path(path).Handler(&handlers.ServicesExecHandler{
+func (r *RailgunRouter) AddServiceExecHandler(name string, path string) {
+	r.Methods("POST", "OPTIONS").Name(name).Path(path).Handler(&handlers.ServiceExecHandler{
 		BaseHandler: r.NewBaseHandler(),
 	})
 }

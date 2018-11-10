@@ -10,8 +10,8 @@ package handlers
 import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
-	"github.com/spatialcurrent/railgun/railgun/util"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/util"
 	"net/http"
 	"reflect"
 )
@@ -97,7 +97,7 @@ func (h *ItemHandler) Delete(w http.ResponseWriter, r *http.Request, format stri
 	if !ok {
 		return nil, errors.Wrap(&rerrors.ErrMissingRequiredParameter{Name: "name"}, "error deleting "+h.Singular)
 	}
-	
+
 	obj, ok := h.Catalog.GetItem(name, h.Type)
 	if !ok {
 		return nil, errors.Wrap(&rerrors.ErrMissingObject{Type: h.Singular, Name: name}, "error deleting "+h.Singular)
@@ -107,7 +107,7 @@ func (h *ItemHandler) Delete(w http.ResponseWriter, r *http.Request, format stri
 	if err != nil {
 		return nil, errors.Wrap(err, "error deleting "+h.Singular)
 	}
-	
+
 	catalogUri := h.Viper.GetString("catalog-uri")
 	if len(catalogUri) > 0 {
 		err = h.Catalog.SaveToFile(catalogUri)

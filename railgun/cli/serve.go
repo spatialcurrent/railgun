@@ -28,11 +28,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/railgun/railgun/catalog"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/router"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	"github.com/spatialcurrent/railgun/railgun/catalog"
-	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 )
 
 var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[]}")
@@ -131,28 +131,12 @@ func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, errorWrit
 
 func serveFunction(cmd *cobra.Command, args []string) {
 
-	railgunCatalog := catalog.NewRailgunCatalog()
-
 	v := viper.New()
 	v.BindPFlags(cmd.PersistentFlags())
 	v.BindPFlags(cmd.Flags())
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	v.AutomaticEnv() // set environment variables to overwrite config
 	util.MergeConfigs(v, v.GetStringArray("config-uri"))
-
-	err := railgunCatalog.LoadFromViper(v)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	if uri := v.GetString("catalog-uri"); len(uri) > 0 {
-		err := railgunCatalog.LoadFromFile(uri)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-	}
 
 	verbose := v.GetBool("verbose")
 
@@ -218,6 +202,25 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		errorWriter.Close()
 		os.Exit(1)
 	}
+
+	railgunCatalog := catalog.NewRailgunCatalog()
+
+	err = railgunCatalog.LoadFromViper(v)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	if uri := v.GetString("catalog-uri"); len(uri) > 0 {
+		err := railgunCatalog.LoadFromFile(uri, logWriter, errorWriter)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	}
+
+	logWriter.Flush()
+	errorWriter.Flush()
 
 	router, err := NewRouter(v, railgunCatalog, errorWriter, logWriter, logFormat, verbose)
 	if err != nil {

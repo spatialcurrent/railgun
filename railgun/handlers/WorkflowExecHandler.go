@@ -15,8 +15,8 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/railgun/railgun/util"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/util"
 	"net/http"
 	//"reflect"
 )
@@ -38,13 +38,14 @@ func (h *WorkflowExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			if err != nil {
 				panic(err)
 			}
-		}
-		err = h.RespondWithObject(w, obj, format)
-		if err != nil {
-			h.Messages <- err
-			err = h.RespondWithError(w, err, format)
+		} else {
+			err = h.RespondWithObject(w, obj, format)
 			if err != nil {
-				panic(err)
+				h.Messages <- err
+				err = h.RespondWithError(w, err, format)
+				if err != nil {
+					panic(err)
+				}
 			}
 		}
 	case "OPTIONS":

@@ -9,9 +9,9 @@ package core
 
 import (
 	"fmt"
+	"github.com/spatialcurrent/go-dfl/dfl"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/geo"
-	"github.com/spatialcurrent/go-dfl/dfl"
 	"strconv"
 )
 

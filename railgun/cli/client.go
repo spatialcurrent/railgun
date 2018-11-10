@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/go-try-get/gtg"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spf13/cobra"
@@ -187,7 +188,7 @@ func newPostCommand(use string, short string, long string, path string, inputTyp
 					}
 				}
 
-				u := v.GetString("server") + strings.Replace(path, "{ext}", "json", 1)
+				u := v.GetString("server") + strings.Replace(strings.Replace(path, "{name}", gtg.TryGetString(inputObject, "name", ""), 1), "{ext}", "json", 1)
 
 				u2, err := url.Parse(u)
 				if err != nil {
@@ -357,14 +358,14 @@ func init() {
 	}
 	clientCmd.AddCommand(servicesCmd)
 	initRestCommands(servicesCmd, "/services", "service", "services", core.ServiceType)
-	servicesExecCmd := newPostCommand(
+	serviceExecCmd := newPostCommand(
 		"exec",
 		"execute a service on the Railgun Server with the given input",
 		"execute a service on the Railgun Server with the given input",
-		"/services/exec.{ext}",
+		"/services/{name}/exec.{ext}",
 		core.JobType)
-	servicesCmd.AddCommand(servicesExecCmd)
-	initFlags(servicesExecCmd, core.JobType)
+	servicesCmd.AddCommand(serviceExecCmd)
+	initFlags(serviceExecCmd, core.JobType)
 
 	// Jobs
 	jobsCmd := &cobra.Command{

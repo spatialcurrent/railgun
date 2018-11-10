@@ -25,15 +25,17 @@ func (w Workflow) GetName() string {
 }
 
 func (w Workflow) Map() map[string]interface{} {
-	jobs := make([]string, 0, len(w.Jobs))
+	jobs := make([]dfl.Node, 0, len(w.Jobs))
 	for _, j := range w.Jobs {
-		jobs = append(jobs, j.Name)
+		jobs = append(jobs, dfl.Literal{Value: j.Name})
 	}
 	m := map[string]interface{}{
 		"name":        w.Name,
 		"title":       w.Title,
 		"description": w.Description,
-		"jobs":        jobs,
+	}
+	if len(jobs) > 0 {
+		m["jobs"] = dfl.Array{Nodes: jobs}.Dfl(dfl.DefaultQuotes, false, 0)
 	}
 	variables := map[dfl.Node]dfl.Node{}
 	for k, v := range w.Variables {
