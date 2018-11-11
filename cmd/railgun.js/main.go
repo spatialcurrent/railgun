@@ -66,6 +66,9 @@ func Process(in interface{}, options *js.Object) interface{} {
 	input_header := []string{}
 	input_comment := ""
 	input_format := ""
+	input_lazy_quotes := false
+	input_limit := gss.NoLimit
+	
 	output_format := ""
 	output_header := []string{}
 	output_limit := gss.NoLimit
@@ -96,6 +99,21 @@ func Process(in interface{}, options *js.Object) interface{} {
 			input_format = v.(string)
 		}
 	}
+	
+	if v, ok := m["input_lazy_quotes"]; ok {
+		switch v.(type) {
+		case bool:
+			input_lazy_quotes = v.(bool)
+		}
+	}
+	
+	if v, ok := m["input_limit"]; ok {
+		switch v.(type) {
+		case int:
+			input_limit = v.(int)
+		}
+	}
+
 
 	if v, ok := m["output_format"]; ok {
 		switch v.(type) {
@@ -132,7 +150,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 			console.Error(errors.Wrap(err, "error geting type for input").Error())
 			return ""
 		}
-		input_object, err := gss.DeserializeString(in.(string), input_format, input_header, input_comment, input_type, false)
+		input_object, err := gss.DeserializeString(in.(string), input_format, input_header, input_comment, input_lazy_quotes, input_limit, input_type, false)
 		if err != nil {
 			console.Error(errors.Wrap(err, "error deserializing input using format "+input_format).Error())
 			return ""
