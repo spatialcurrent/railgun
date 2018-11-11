@@ -35,10 +35,10 @@ import (
 func main() {
 
 	js.Global.Set("railgun", map[string]interface{}{
-		"version": railgun.VERSION,
+		"version": railgun.Version,
 		"process": Process,
 		"dfl": map[string]interface{}{
-			"version":        dfl.VERSION,
+			"version":        dfl.Version,
 			"Parse":          dfljs.Parse,
 			"EvaluateBool":   dfljs.EvaluateBool,
 			"EvaluateInt":    dfljs.EvaluateInt,
@@ -46,7 +46,7 @@ func main() {
 			"EvaluateString": dfljs.EvaluateString,
 		},
 		"gss": map[string]interface{}{
-			"version":     gss.VERSION,
+			"version":     gss.Version,
 			"formats":     gss.Formats,
 			"convert":     gssjs.Convert,
 			"deserialize": gssjs.Deserialize,

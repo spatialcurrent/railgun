@@ -22,7 +22,7 @@ var versionCmd = &cobra.Command{
 	Short: "print version to stdout",
 	Long:  "print version to stdout",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(railgun.VERSION)
+		fmt.Println(railgun.Version)
 	},
 }
 
