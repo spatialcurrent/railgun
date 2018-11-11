@@ -9,7 +9,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/core"
 	"github.com/spatialcurrent/railgun/railgun/handlers"
 	"github.com/spatialcurrent/railgun/railgun/request"
-	"github.com/spf13/viper"
+	"github.com/spatialcurrent/viper"
 	"reflect"
 	"strings"
 )
