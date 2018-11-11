@@ -10,6 +10,7 @@ jobs:
     steps:
       - checkout
       - run: go get -d ./...
+      - run: go get github.com/inconshreveable/mousetrap 
       - run: sudo chown -R circleci /go/src
       - save_cache:
           key: v1-go-src-{{ .Branch }}-{{ .Revision }}
