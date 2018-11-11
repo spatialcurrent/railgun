@@ -67,6 +67,8 @@ jobs:
           docker_layer_caching: true
       - run: CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/railgun_linux_amd64 github.com/spatialcurrent/railgun/cmd/railgun
       - run: docker build -t railgun:git-${CIRCLE_SHA1} .
+      - run: sudo apt-get install python-dev python-pip
+      - run: pip install awscli --upgrade --user
       - run: bash -c "$(aws ecr get-login --no-include-email --region ${AWS_DEFAULT_REGION})"
       - run: docker tag railgun:git-${CIRCLE_SHA1} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/railgun:git-${CIRCLE_SHA1} 
       - run: docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/railgun:git-${CIRCLE_SHA1} 

@@ -67,9 +67,11 @@ func Process(in interface{}, options *js.Object) interface{} {
 	input_comment := ""
 	input_format := ""
 	output_format := ""
+	output_header := []string{}
+	output_limit := gss.NoLimit
 	dfl_exp := ""
 
-	if v, ok := m["header"]; ok {
+	if v, ok := m["input_header"]; ok {
 		switch v.(type) {
 		case []string:
 			input_header = v.([]string)
@@ -101,17 +103,36 @@ func Process(in interface{}, options *js.Object) interface{} {
 			output_format = v.(string)
 		}
 	}
+	
+	if v, ok := m["output_header"]; ok {
+		switch v.(type) {
+		case []string:
+			output_header = v.([]string)
+		case []interface{}:
+			output_header = make([]string, 0, len(v.([]interface{})))
+			for _, h := range v.([]interface{}) {
+				output_header = append(output_header, fmt.Sprint(h))
+			}
+		}
+	}
+	
+	if v, ok := m["output_limit"]; ok {
+		switch v.(type) {
+		case int:
+			output_limit = v.(int)
+		}
+	}
 
 	var ctx interface{}
 
 	switch in.(type) {
 	case string:
-		input_type, err := gss.GetType(in.(string), input_format)
+		input_type, err := gss.GetType([]byte(in.(string)), input_format)
 		if err != nil {
 			console.Error(errors.Wrap(err, "error geting type for input").Error())
 			return ""
 		}
-		input_object, err := gss.Deserialize(in.(string), input_format, input_header, input_comment, input_type, false)
+		input_object, err := gss.DeserializeString(in.(string), input_format, input_header, input_comment, input_type, false)
 		if err != nil {
 			console.Error(errors.Wrap(err, "error deserializing input using format "+input_format).Error())
 			return ""
@@ -168,7 +189,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 	output = gss.StringifyMapKeys(output)
 
 	if len(output_format) > 0 {
-		output_string, err := gss.Serialize(output, output_format)
+		output_string, err := gss.SerializeString(output, output_format, output_header, output_limit)
 		if err != nil {
 			console.Error(errors.Wrap(err, "Error converting to output format "+output_format).Error())
 			return ""
