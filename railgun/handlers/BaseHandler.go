@@ -20,7 +20,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/catalog"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/request"
-	"github.com/spf13/viper"
+	"github.com/spatialcurrent/viper"
 	"io/ioutil"
 	"net/http"
 	"strings"

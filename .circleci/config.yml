@@ -55,6 +55,18 @@ jobs:
       - store_artifacts:
           path: bin
           destination: /
+  build_container:
+    executor: base
+    steps:
+      - run: sudo chown -R circleci /go/src
+      - restore_cache:
+          keys:
+            - v1-go-src-{{ .Branch }}-{{ .Revision }}
+      - run: CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/railgun_linux_amd64 github.com/spatialcurrent/railgun/cmd/railgun
+      - run: docker build -t railgun:git-${CIRCLE_SHA1} .
+      - run: bash -c "$(aws ecr get-login --no-include-email --region ${AWS_DEFAULT_REGION})"
+      - run: docker tag railgun:git-${CIRCLE_SHA1} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/railgun:git-${CIRCLE_SHA1} 
+      - run: docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/railgun:git-${CIRCLE_SHA1} 
 workflows:
   main:
     jobs:
@@ -68,4 +80,7 @@ workflows:
       - build_javascript:
           requires:
             - pre_deps_golang
+      - build_container:
+          requires:
+            - build_cli
 
