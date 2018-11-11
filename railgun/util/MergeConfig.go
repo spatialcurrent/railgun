@@ -11,7 +11,7 @@ import (
 	"bytes"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-reader-writer/grw"
-	"github.com/spf13/viper"
+	"github.com/spatialcurrent/viper"
 )
 
 // MergeConfig merges a config from the given uri into the Viper config.

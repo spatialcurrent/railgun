@@ -8,7 +8,7 @@
 package util
 
 import (
-	"github.com/spf13/viper"
+	"github.com/spatialcurrent/viper"
 )
 
 // MergeConfigs merges an array of config from the given uris into the Viper config.
