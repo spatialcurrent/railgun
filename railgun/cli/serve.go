@@ -12,7 +12,7 @@ import (
 	"fmt"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/spatialcurrent/viper"
-	"github.com/spf13/cobra"
+	"github.com/spatialcurrent/cobra"
 	"net/http"
 	"os"
 	"os/signal"

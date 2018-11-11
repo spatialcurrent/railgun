@@ -13,7 +13,7 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/viper"
-	"github.com/spf13/cobra"
+	"github.com/spatialcurrent/cobra"
 	"gopkg.in/yaml.v2"
 	"os"
 	"reflect"

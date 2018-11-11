@@ -10,7 +10,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
+	"github.com/spatialcurrent/cobra"
 )
 
 // configCmd represents the config command

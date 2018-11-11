@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/viper"
-	"github.com/spf13/cobra"
+	"github.com/spatialcurrent/cobra"
 	"io/ioutil"
 	"os"
 	"strings"

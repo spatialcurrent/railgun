@@ -17,7 +17,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/core"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spatialcurrent/viper"
-	"github.com/spf13/cobra"
+	"github.com/spatialcurrent/cobra"
 	"io/ioutil"
 	"net/http"
 	"net/url"

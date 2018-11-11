@@ -16,7 +16,7 @@ import (
 import (
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spatialcurrent/viper"
-	"github.com/spf13/cobra"
+	"github.com/spatialcurrent/cobra"
 )
 
 var cfgFile string
