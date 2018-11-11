@@ -184,12 +184,12 @@ func Process(in interface{}, options *js.Object) interface{} {
 
 	var dfl_node dfl.Node
 	if len(dfl_exp) > 0 {
-		n, err := dfl.Parse(dfl_exp)
+		n, err := dfl.ParseCompile(dfl_exp)
 		if err != nil {
 			console.Error(errors.Wrap(err, "Error parsing DFL node.").Error())
 			return ""
 		}
-		dfl_node = n.Compile()
+		dfl_node = n
 	}
 
 	var output interface{}
