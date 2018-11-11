@@ -19,7 +19,7 @@ import (
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/parser"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	"github.com/spf13/viper"
+	"github.com/spatialcurrent/viper"
 	"os"
 	"path/filepath"
 	"reflect"
