@@ -6,6 +6,6 @@ ADD bin/railgun_linux_amd64 /railgun
 
 EXPOSE 8080
 
-ENTRYPOINT ["/bin/chamber", "exec", "railgun-prod", "--", "/bin/railgun"]
+ENTRYPOINT ["/chamber", "exec", "railgun-prod", "--", "/railgun"]
 
 CMD ["--verbose"]
