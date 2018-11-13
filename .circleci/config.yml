@@ -11,6 +11,7 @@ jobs:
       - checkout
       - run: go get -d ./...
       - run: go get github.com/inconshreveable/mousetrap # for windows CLI builds
+      - run: go get github.com/segmentio/chamber # for AWS docker containers
       - run: sudo chown -R circleci /go/src
       - save_cache:
           key: v1-go-src-{{ .Branch }}-{{ .Revision }}
@@ -65,6 +66,7 @@ jobs:
             - v1-go-src-{{ .Branch }}-{{ .Revision }}
       - setup_remote_docker:
           docker_layer_caching: true
+      - run: GOOS=linux go build -o bin/chamber_linux_amd64 -ldflags "-linkmode external -extldflags -static" github.com/segmentio/chamber
       - run: CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/railgun_linux_amd64 github.com/spatialcurrent/railgun/cmd/railgun
       - run: docker build -t railgun:git-${CIRCLE_SHA1} .
       - run: sudo apt-get install python-dev python-pip

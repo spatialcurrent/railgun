@@ -40,7 +40,7 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, obj, format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format)
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
@@ -98,7 +98,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, errors.Wrap(err, "invalid data store uri")
 	}
 
-	inputReader, _, err := grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, nil)
+	inputReader, _, err := grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, h.GetAWSS3Client())
 	if err != nil {
 		return nil, errors.Wrap(err, "error opening resource at uri "+inputUri)
 	}

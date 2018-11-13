@@ -11,13 +11,13 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/spatialcurrent/cobra"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/go-try-get/gtg"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spatialcurrent/viper"
-	"github.com/spatialcurrent/cobra"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -51,10 +51,11 @@ func printConfig(v *viper.Viper) {
 }
 
 type RequestInput struct {
-	Url    string
-	Method string
-	Object interface{}
-	Format string
+	Url           string
+	Method        string
+	Object        interface{}
+	Format        string
+	Authorization string
 }
 
 //func handlePost(url string, inputObject interface{}, outputFormat string, outputWriter grw.ByteWriteCloser, errorWriter grw.ByteWriteCloser) error {
@@ -74,6 +75,9 @@ func MakeRequest(input *RequestInput, outputWriter grw.ByteWriteCloser, errorWri
 		r.Header.Set("Content-Type", "application/json")
 		if err != nil {
 			return err
+		}
+		if len(input.Authorization) > 0 {
+			r.Header.Set("Authorization", "bearer "+input.Authorization)
 		}
 		req = r
 	} else {
@@ -109,6 +113,8 @@ func MakeRequest(input *RequestInput, outputWriter grw.ByteWriteCloser, errorWri
 	if err != nil {
 		return err
 	}
+
+	//fmt.Println("Resp Code:", resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		return errors.New(string(outputBytes))
@@ -149,14 +155,15 @@ func newPostCommand(use string, short string, long string, path string, inputTyp
 		Long:  long,
 		Run: func(cmd *cobra.Command, args []string) {
 
-			errorWriter, err := grw.WriteToResource("stderr", "", true, nil)
+			v := initViper(cmd)
+
+			errorWriter, err := grw.WriteToResource(v.GetString("error-destination"), "", true, nil)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error creating error writer\n")
 				os.Exit(1)
 			}
 
 			err = func(errorWriter grw.ByteWriteCloser) error {
-				v := initViper(cmd)
 
 				verbose := v.GetBool("verbose")
 
@@ -200,10 +207,11 @@ func newPostCommand(use string, short string, long string, path string, inputTyp
 				}
 
 				return MakeRequest(&RequestInput{
-					Url:    u,
-					Method: "POST",
-					Object: inputObject,
-					Format: v.GetString("output-format"),
+					Url:           u,
+					Method:        "POST",
+					Object:        inputObject,
+					Format:        v.GetString("output-format"),
+					Authorization: v.GetString("jwt-token"),
 				}, outputWriter, errorWriter, v.GetBool("verbose"))
 
 			}(errorWriter)
@@ -225,14 +233,15 @@ func newRestCommand(use string, short string, long string, path string, method s
 		Long:  long,
 		Run: func(cmd *cobra.Command, args []string) {
 
-			errorWriter, err := grw.WriteToResource("stderr", "", true, nil)
+			v := initViper(cmd)
+
+			errorWriter, err := grw.WriteToResource(v.GetString("error-destination"), "", true, nil)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error creating error writer\n")
 				os.Exit(1)
 			}
 
 			err = func(errorWriter grw.ByteWriteCloser) error {
-				v := initViper(cmd)
 
 				verbose := v.GetBool("verbose")
 
@@ -266,10 +275,11 @@ func newRestCommand(use string, short string, long string, path string, method s
 				}
 
 				return MakeRequest(&RequestInput{
-					Url:    u,
-					Method: method,
-					Object: obj,
-					Format: v.GetString("output-format"),
+					Url:           u,
+					Method:        method,
+					Object:        obj,
+					Format:        v.GetString("output-format"),
+					Authorization: v.GetString("jwt-token"),
 				}, outputWriter, errorWriter, v.GetBool("verbose"))
 
 			}(errorWriter)
@@ -296,8 +306,74 @@ func init() {
 	}
 
 	rootCmd.AddCommand(clientCmd)
+	clientCmd.PersistentFlags().String("jwt-token", "", "The JWT token")
 	clientCmd.PersistentFlags().StringP("server", "s", "http://localhost:8080", "the \"server\" location")
 	clientCmd.PersistentFlags().StringP("output-format", "f", "json", "the output format: "+strings.Join(gss.Formats, ", "))
+
+	authenticateCmd := &cobra.Command{
+		Use:   "authenticate",
+		Short: "authenticate with Railgun Server",
+		Long:  "authenticate with Railgun Server",
+		Run: func(cmd *cobra.Command, args []string) {
+
+			v := initViper(cmd)
+
+			errorWriter, err := grw.WriteToResource(v.GetString("error-destination"), "", true, nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error creating error writer\n")
+				os.Exit(1)
+			}
+
+			err = func(errorWriter grw.ByteWriteCloser) error {
+
+				verbose := v.GetBool("verbose")
+
+				if verbose {
+					printConfig(v)
+				}
+
+				outputWriter, err := grw.WriteToResource("stdout", "", true, nil)
+				if err != nil {
+					return errors.Wrap(err, "error opening output file")
+				}
+
+				inputObject := map[string]interface{}{
+					"username": v.GetString("username"),
+					"password": v.GetString("password"),
+				}
+
+				u := v.GetString("server") + "/authenticate." + v.GetString("output-format")
+
+				u2, err := url.Parse(u)
+				if err != nil {
+					return err
+				}
+
+				if strings.Contains(u2.Path, "//") {
+					return errors.New("url is invalid: " + u)
+				}
+
+				return MakeRequest(&RequestInput{
+					Url:           u,
+					Method:        "POST",
+					Object:        inputObject,
+					Format:        v.GetString("output-format"),
+					Authorization: v.GetString("jwt-token"),
+				}, outputWriter, errorWriter, v.GetBool("verbose"))
+
+			}(errorWriter)
+
+			if err != nil {
+				errorWriter.WriteError(err)
+				errorWriter.Flush()
+				os.Exit(1)
+			}
+
+		},
+	}
+	authenticateCmd.Flags().String("username", "", "username")
+	authenticateCmd.Flags().String("password", "", "password")
+	clientCmd.AddCommand(authenticateCmd)
 
 	// Workspaces
 	workspacesCmd := &cobra.Command{

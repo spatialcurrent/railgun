@@ -10,10 +10,10 @@ package cli
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/spatialcurrent/cobra"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/viper"
-	"github.com/spatialcurrent/cobra"
 	"gopkg.in/yaml.v2"
 	"os"
 	"reflect"

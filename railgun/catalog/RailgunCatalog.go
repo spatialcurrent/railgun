@@ -8,7 +8,9 @@
 package catalog
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
@@ -161,11 +163,16 @@ func (c *RailgunCatalog) ParseProcess(obj interface{}) (*core.Process, error) {
 	}
 	title := gtg.TryGetString(obj, "title", "")
 	description := gtg.TryGetString(obj, "description", "")
+	tags, err := parser.ParseStringArray(obj, "tags")
+	if err != nil {
+		return &core.Process{}, err
+	}
 	p := &core.Process{
 		Name:        name,
 		Title:       coalesce(title, name),
 		Description: coalesce(description, title, name),
 		Node:        node,
+		Tags:        tags,
 	}
 	return p, nil
 }
@@ -197,6 +204,10 @@ func (c *RailgunCatalog) ParseService(obj interface{}) (*core.Service, error) {
 	if err != nil {
 		return &core.Service{}, err
 	}
+	tags, err := parser.ParseStringArray(obj, "tags")
+	if err != nil {
+		return &core.Service{}, err
+	}
 	s := &core.Service{
 		Name:        name,
 		Title:       coalesce(title, name),
@@ -204,6 +215,7 @@ func (c *RailgunCatalog) ParseService(obj interface{}) (*core.Service, error) {
 		DataStore:   datastore,
 		Process:     process,
 		Defaults:    defaults,
+		Tags:        tags,
 	}
 	return s, nil
 }
@@ -497,7 +509,9 @@ func (c *RailgunCatalog) ListWorkflows() []*core.Workflow {
 	return c.Catalog.List(core.WorkflowType).([]*core.Workflow)
 }
 
-func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser, errorWriter grw.ByteWriteCloser) error {
+func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, errorWriter grw.ByteWriteCloser, s3_client *s3.S3) error {
+
+	logWriter.WriteLine(fmt.Sprintf("* loading catalog from %s", uri))
 
 	raw, err := func(uri string) (interface{}, error) {
 
@@ -511,7 +525,7 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 			return nil, &rerrors.ErrInvalidConfig{Name: "uri", Value: uri}
 		}
 
-		reader, _, err := grw.ReadFromResource(uri, compression, 4096, false, nil)
+		reader, _, err := grw.ReadFromResource(uri, compression, 4096, false, s3_client)
 		if err != nil {
 			return nil, err
 		}
@@ -524,6 +538,8 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 		if len(inputBytes) == 0 {
 			return nil, nil
 		}
+
+		logWriter.WriteLine(fmt.Sprintf("* catalog is %d bytes", len(inputBytes)))
 
 		inputType, err := gss.GetType(inputBytes, format)
 		if err != nil {
@@ -544,13 +560,16 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 	}
 
 	if raw == nil {
+		logWriter.WriteLine(fmt.Sprint("* catalog was empty"))
 		return nil
 	}
 
 	if t := reflect.TypeOf(raw); t.Kind() == reflect.Map {
 		v := reflect.ValueOf(raw)
 
-		key := "workspace"
+		logWriter.WriteLine(fmt.Sprintf("* catalog has keys %v", v.MapKeys()))
+
+		key := "Workspace"
 		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
 			listValue := reflect.ValueOf(list.Interface())
 			listType := listValue.Type()
@@ -569,7 +588,7 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 			}
 		}
 
-		key = "datastore"
+		key = "DataStore"
 		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
 			listValue := reflect.ValueOf(list.Interface())
 			listType := listValue.Type()
@@ -588,7 +607,7 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 			}
 		}
 
-		key = "layer"
+		key = "Layer"
 		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
 			listValue := reflect.ValueOf(list.Interface())
 			listType := listValue.Type()
@@ -607,7 +626,7 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 			}
 		}
 
-		key = "process"
+		key = "Process"
 		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
 			listValue := reflect.ValueOf(list.Interface())
 			listType := listValue.Type()
@@ -626,7 +645,7 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 			}
 		}
 
-		key = "service"
+		key = "Service"
 		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
 			listValue := reflect.ValueOf(list.Interface())
 			listType := listValue.Type()
@@ -646,7 +665,7 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 			}
 		}
 
-		key = "job"
+		key = "Job"
 		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
 			listValue := reflect.ValueOf(list.Interface())
 			listType := listValue.Type()
@@ -665,7 +684,7 @@ func (c *RailgunCatalog) LoadFromFile(uri string, logWriter grw.ByteWriteCloser,
 			}
 		}
 
-		key = "workflow"
+		key = "Workflow"
 		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
 			listValue := reflect.ValueOf(list.Interface())
 			listType := listValue.Type()
@@ -926,13 +945,13 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 
 }
 
-func (c *RailgunCatalog) SaveToFile(uri string) error {
+func (c *RailgunCatalog) SaveToUri(uri string, s3_client *s3.S3) error {
 
 	data := c.Dump()
 
 	err := func(data map[string]interface{}, uri string) error {
 
-		_, uriPath := grw.SplitUri(uri)
+		scheme, uriPath := grw.SplitUri(uri)
 
 		name, format, compression := util.SplitNameFormatCompression(filepath.Base(uriPath))
 		if len(name) == 0 {
@@ -942,14 +961,26 @@ func (c *RailgunCatalog) SaveToFile(uri string) error {
 			return &rerrors.ErrInvalidConfig{Name: "catalog-uri", Value: uri}
 		}
 
+		b, err := gss.SerializeBytes(data, format, gss.NoHeader, gss.NoLimit)
+		if err != nil {
+			return errors.Wrap(err, "error serializing catalog")
+		}
+
+		if scheme == "s3" {
+			i := strings.Index(uriPath, "/")
+			if i == -1 {
+				return errors.New("s3 path missing bucket")
+			}
+			err := grw.UploadS3Object(uriPath[0:i], uriPath[i+1:], bytes.NewBuffer(b), s3_client)
+			if err != nil {
+				return errors.Wrap(err, "error uploading new version of catalog to S3")
+			}
+			return nil
+		}
+
 		outputWriter, err := grw.WriteToResource(uri, compression, false, nil)
 		if err != nil {
 			return errors.Wrap(err, "error opening writer")
-		}
-
-		b, err := gss.SerializeBytes(data, format, []string{}, gss.NoLimit)
-		if err != nil {
-			return errors.Wrap(err, "error serializing catalog")
 		}
 
 		_, err = outputWriter.Write(b)

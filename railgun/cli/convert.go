@@ -10,9 +10,9 @@ package cli
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/spatialcurrent/cobra"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/viper"
-	"github.com/spatialcurrent/cobra"
 	"io/ioutil"
 	"os"
 	"strings"

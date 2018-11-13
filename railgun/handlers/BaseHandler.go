@@ -8,22 +8,28 @@
 package handlers
 
 import (
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/formatters/html"
 	"github.com/alecthomas/chroma/lexers"
 	"github.com/alecthomas/chroma/styles"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	jwt "github.com/dgrijalva/jwt-go"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/railgun/railgun/catalog"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/request"
+	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spatialcurrent/viper"
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type BaseHandler struct {
@@ -33,6 +39,79 @@ type BaseHandler struct {
 	Messages        chan interface{}
 	Errors          chan error
 	AwsSessionCache *gocache.Cache
+	PublicKey       *rsa.PublicKey
+	PrivateKey      *rsa.PrivateKey
+	SessionDuration time.Duration
+	ValidMethods    []string
+}
+
+func (h *BaseHandler) GetAuthorization(r *http.Request) (string, error) {
+	authorization := r.Header.Get("Authorization")
+	if authorization == "" {
+		return "", &rerrors.ErrMissingRequiredParameter{Name: "Authorization"}
+	}
+
+	parts := strings.Split(authorization, " ")
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return "", &rerrors.ErrInvalidParameter{Name: "Authorization", Value: authorization}
+	}
+
+	return parts[1], nil
+}
+
+func (h *BaseHandler) NewAuthorization(r *http.Request, user string) (string, error) {
+	fmt.Println("SessionDuration:", h.SessionDuration)
+	token := jwt.NewWithClaims(jwt.SigningMethodRS512, &jwt.StandardClaims{
+		Subject:   user,
+		ExpiresAt: time.Now().Add(h.SessionDuration).Unix(),
+	})
+	str, err := token.SignedString(h.PrivateKey)
+	if err != nil {
+		return "", errors.Wrap(err, "error signing JWT token")
+	}
+	return str, nil
+	//r.Header.Set("Authorization", "bearer "+str)
+	//return nil
+}
+
+/*func (h *BaseHandler) VerifyAuthorization(authorization string) {
+  parts := strings.Split(authorization, ".")
+  return jwt.SigningMethodRS512.Verify(strings.Join(parts[0:2], "."), parts[2], h.PublicKey)
+}*/
+
+func (h *BaseHandler) ParseAuthorization(str string) (*jwt.StandardClaims, error) {
+	parser := &jwt.Parser{
+		ValidMethods: h.ValidMethods,
+	}
+	fmt.Println("Parser:", parser)
+	token, err := parser.ParseWithClaims(str, &jwt.StandardClaims{}, func(t *jwt.Token) (interface{}, error) {
+		return h.PublicKey, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return token.Claims.(*jwt.StandardClaims), nil
+}
+
+func (h *BaseHandler) GetAWSS3Client() *s3.S3 {
+
+	awsDefaultRegion := h.Viper.GetString("aws-default-region")
+	awsAccessKeyId := h.Viper.GetString("aws-access-key-id")
+	awsSecretAccessKey := h.Viper.GetString("aws-secret-access-key")
+	awsSessionToken := h.Viper.GetString("aws-session-token")
+
+	var awsSession *session.Session
+	var s3_client *s3.S3
+
+	s, found := h.AwsSessionCache.Get(awsAccessKeyId + "\n" + awsSessionToken)
+	if found {
+		awsSession = s.(*session.Session)
+	} else {
+		awsSession = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+		h.AwsSessionCache.Set(awsAccessKeyId+"\n"+awsSessionToken, awsSession, gocache.DefaultExpiration)
+	}
+	s3_client = s3.New(awsSession)
+	return s3_client
 }
 
 func (h *BaseHandler) ParseBody(r *http.Request, format string) (interface{}, error) {
@@ -54,7 +133,8 @@ func (h *BaseHandler) ParseBody(r *http.Request, format string) (interface{}, er
 	return inputObject, nil
 }
 
-func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, obj interface{}, format string) error {
+func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, obj interface{}, format string) error {
+
 	if format == "html" {
 		code, err := json.MarshalIndent(obj, "", "    ")
 		if err != nil {
@@ -107,6 +187,7 @@ func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, obj interface{}, 
       </body>
     </html>
    `
+		w.WriteHeader(statusCode)
 		w.Write([]byte(html))
 		return nil
 	}
@@ -115,6 +196,7 @@ func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, obj interface{}, 
 	if err != nil {
 		return errors.Wrap(err, "error serializing response body")
 	}
+	w.WriteHeader(statusCode)
 	switch format {
 	case "bson":
 		w.Header().Set("Content-Type", "application/ubjson")
@@ -146,8 +228,6 @@ func (h *BaseHandler) RespondWithError(w http.ResponseWriter, err error, format 
 	default:
 		w.WriteHeader(http.StatusInternalServerError)
 	}
-
-	fmt.Println("Response Bytes:", string(b))
 
 	w.Write(b)
 	return nil

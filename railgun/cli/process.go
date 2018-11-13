@@ -26,8 +26,8 @@ import (
 
 import (
 	"github.com/mitchellh/go-homedir"
-	"github.com/spatialcurrent/viper"
 	"github.com/spatialcurrent/cobra"
+	"github.com/spatialcurrent/viper"
 )
 
 import (

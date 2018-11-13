@@ -23,7 +23,7 @@ func (h *ObjectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case "GET":
-		err := h.RespondWithObject(w, h.Object, format)
+		err := h.RespondWithObject(w, http.StatusOK, h.Object, format)
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)

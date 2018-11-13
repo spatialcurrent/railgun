@@ -8,11 +8,15 @@
 package handlers
 
 import (
+	//"fmt"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/pkg/errors"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"net/http"
 	"reflect"
+	"strings"
 )
 
 type GroupHandler struct {
@@ -36,7 +40,7 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, obj, format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format)
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
@@ -56,7 +60,7 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, obj, format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format)
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
@@ -92,6 +96,20 @@ func (h *GroupHandler) Get(w http.ResponseWriter, r *http.Request, format string
 
 func (h *GroupHandler) Post(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
 
+	authorization, err := h.GetAuthorization(r)
+	if err != nil {
+		return nil, err
+	}
+
+	claims, err := h.ParseAuthorization(authorization)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not verify authorization")
+	}
+
+	if claims.Subject != "root" {
+		return nil, errors.New("not authorized")
+	}
+
 	body, err := h.ParseBody(r, format)
 	if err != nil {
 		return nil, err
@@ -109,7 +127,13 @@ func (h *GroupHandler) Post(w http.ResponseWriter, r *http.Request, format strin
 
 	catalogUri := h.Viper.GetString("catalog-uri")
 	if len(catalogUri) > 0 {
-		err = h.Catalog.SaveToFile(catalogUri)
+
+		var s3_client *s3.S3
+		if strings.HasPrefix(catalogUri, "s3://") {
+			s3_client = h.GetAWSS3Client()
+		}
+
+		err = h.Catalog.SaveToUri(catalogUri, s3_client)
 		if err != nil {
 			return nil, err
 		}

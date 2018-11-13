@@ -1,6 +1,7 @@
 package router
 
 import (
+	"crypto/rsa"
 	"fmt"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/spatialcurrent/go-adaptive-functions/af"
@@ -12,20 +13,29 @@ import (
 	"github.com/spatialcurrent/viper"
 	"reflect"
 	"strings"
+	"time"
 )
 
 type RailgunRouter struct {
 	*Router
-	Viper   *viper.Viper
-	Catalog *catalog.RailgunCatalog
+	Viper           *viper.Viper
+	Catalog         *catalog.RailgunCatalog
+	PublicKey       *rsa.PublicKey
+	PrivateKey      *rsa.PrivateKey
+	ValidMethods    []string
+	SessionDuration time.Duration
 }
 
-func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, requests chan request.Request, messages chan interface{}, errors chan error, awsSessionCache *gocache.Cache) *RailgunRouter {
+func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, requests chan request.Request, messages chan interface{}, errors chan error, awsSessionCache *gocache.Cache, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string) *RailgunRouter {
 
 	r := &RailgunRouter{
-		Viper:   v,
-		Catalog: railgunCatalog,
-		Router:  NewRouter(requests, messages, errors, awsSessionCache),
+		Viper:           v,
+		Catalog:         railgunCatalog,
+		Router:          NewRouter(requests, messages, errors, awsSessionCache),
+		PublicKey:       publicKey,
+		PrivateKey:      privateKey,
+		ValidMethods:    validMethods,
+		SessionDuration: v.GetDuration("jwt-session-duration"),
 	}
 
 	r.Use(DebugMiddleWare)
@@ -35,6 +45,8 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 	r.AddSwaggerHandler("home", "/")
 
 	r.AddSwaggerHandler("swagger", "/swagger.{ext}")
+
+	r.AddAuthenticateHandler("authenticate", "/authenticate.{ext}")
 
 	r.AddObjectHandler("formats", "/gss/formats.{ext}", map[string]interface{}{"formats": gss.Formats})
 
@@ -126,6 +138,10 @@ func (r *RailgunRouter) NewBaseHandler() *handlers.BaseHandler {
 		Messages:        r.Messages,
 		Errors:          r.Errors,
 		AwsSessionCache: r.AwsSessionCache,
+		PublicKey:       r.PublicKey,
+		PrivateKey:      r.PrivateKey,
+		ValidMethods:    r.ValidMethods,
+		SessionDuration: r.SessionDuration,
 	}
 }
 
@@ -157,6 +173,12 @@ func (r *RailgunRouter) AddItemHandler(name string, path string, t reflect.Type,
 
 func (r *RailgunRouter) AddSwaggerHandler(name string, path string) {
 	r.Methods("GET").Name(name).Path(path).Handler(&handlers.SwaggerHandler{
+		BaseHandler: r.NewBaseHandler(),
+	})
+}
+
+func (r *RailgunRouter) AddAuthenticateHandler(name string, path string) {
+	r.Methods("POST").Name(name).Path(path).Handler(&handlers.AuthenticateHandler{
 		BaseHandler: r.NewBaseHandler(),
 	})
 }

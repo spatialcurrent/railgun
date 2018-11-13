@@ -193,6 +193,14 @@ func (h *SwaggerHandler) BuildPaths(singular string, plural string, basepath str
 
 func (h *SwaggerHandler) BuildDefinitions() map[string]swagger.Definition {
 	definitions := map[string]swagger.Definition{}
+	definitions["Credentials"] = swagger.Definition{
+		Type:     "object",
+		Required: []string{"username", "password"},
+		Properties: map[string]swagger.Property{
+			"username": swagger.Property{Type: "string"},
+			"password": swagger.Property{Type: "string"},
+		},
+	}
 	for name, t := range core.CoreTypes {
 		definitions[strings.Title(name)] = swagger.Definition{
 			Type:       "object",
@@ -274,6 +282,30 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 	}
 
 	paths := map[string]swagger.Path{
+		"/authenticate.{ext}": swagger.Path{
+			Get: swagger.Operation{
+				Description: "Authenticate",
+				Tags:        []string{"Security"},
+				Parameters: []swagger.Parameter{
+					swagger.Parameter{
+						Name:        "credentials",
+						Type:        "",
+						Description: "the login credentials",
+						In:          "body",
+						Required:    true,
+						Schema: &swagger.Schema{
+							Ref: fmt.Sprintf("#/definitions/%s", "Credentials"),
+						},
+					},
+					params["ext"],
+				},
+				Responses: map[string]swagger.Response{
+					"200": swagger.Response{
+						Description: "OK",
+					},
+				},
+			},
+		},
 		"/swagger.{ext}": swagger.Path{
 			Get: swagger.Operation{
 				Description: "Railgun Swagger Document",

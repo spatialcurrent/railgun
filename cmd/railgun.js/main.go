@@ -68,7 +68,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 	input_format := ""
 	input_lazy_quotes := false
 	input_limit := gss.NoLimit
-	
+
 	output_format := ""
 	output_header := []string{}
 	output_limit := gss.NoLimit
@@ -99,14 +99,14 @@ func Process(in interface{}, options *js.Object) interface{} {
 			input_format = v.(string)
 		}
 	}
-	
+
 	if v, ok := m["input_lazy_quotes"]; ok {
 		switch v.(type) {
 		case bool:
 			input_lazy_quotes = v.(bool)
 		}
 	}
-	
+
 	if v, ok := m["input_limit"]; ok {
 		switch v.(type) {
 		case int:
@@ -114,14 +114,13 @@ func Process(in interface{}, options *js.Object) interface{} {
 		}
 	}
 
-
 	if v, ok := m["output_format"]; ok {
 		switch v.(type) {
 		case string:
 			output_format = v.(string)
 		}
 	}
-	
+
 	if v, ok := m["output_header"]; ok {
 		switch v.(type) {
 		case []string:
@@ -133,7 +132,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 			}
 		}
 	}
-	
+
 	if v, ok := m["output_limit"]; ok {
 		switch v.(type) {
 		case int:

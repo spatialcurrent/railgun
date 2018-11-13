@@ -8,7 +8,6 @@
 package core
 
 import (
-	"fmt"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"reflect"
 )
@@ -18,6 +17,7 @@ type Process struct {
 	Title       string   `rest:"title, the title of the process"`
 	Description string   `rest:"description, a verbose description of the process"`
 	Node        dfl.Node `rest:"expression, the DFL expression of the process" required:"yes"`
+	Tags        []string `rest:"tags, tags for the service"`
 }
 
 func (p Process) GetName() string {
@@ -25,14 +25,21 @@ func (p Process) GetName() string {
 }
 
 func (p Process) Map() map[string]interface{} {
-	fmt.Println("p.Node:", p.Node)
-	return map[string]interface{}{
+	m := map[string]interface{}{
 		"name":        p.Name,
 		"title":       p.Title,
 		"description": p.Description,
 		"expression":  p.Node.Dfl(dfl.DefaultQuotes, false, 0),
 		"variables":   p.Node.Variables(),
 	}
+	tags := make([]dfl.Node, 0)
+	for _, v := range p.Tags {
+		tags = append(tags, dfl.Literal{Value: v})
+	}
+	if len(tags) > 0 {
+		m["tags"] = dfl.Array{Nodes: tags}.Dfl(dfl.DefaultQuotes, false, 0)
+	}
+	return m
 }
 
 func (p Process) Dfl() string {

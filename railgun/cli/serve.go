@@ -9,10 +9,12 @@ package cli
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
+	jwt "github.com/dgrijalva/jwt-go"
 	gocache "github.com/patrickmn/go-cache"
-	"github.com/spatialcurrent/viper"
 	"github.com/spatialcurrent/cobra"
+	"github.com/spatialcurrent/viper"
 	"net/http"
 	"os"
 	"os/signal"
@@ -37,7 +39,7 @@ import (
 
 var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[]}")
 
-func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, errorWriter grw.ByteWriteCloser, logWriter grw.ByteWriteCloser, logFormat string, verbose bool) (*router.RailgunRouter, error) {
+func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, errorWriter grw.ByteWriteCloser, logWriter grw.ByteWriteCloser, logFormat string, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, verbose bool) (*router.RailgunRouter, error) {
 
 	errorsChannel := make(chan error, 10000)
 	requests := make(chan request.Request, 10000)
@@ -124,9 +126,68 @@ func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, errorWrit
 		requests,
 		messages,
 		errorsChannel,
-		awsSessionCache)
+		awsSessionCache,
+		publicKey,
+		privateKey,
+		validMethods)
 
 	return r, nil
+}
+
+func initPublicKey(publicKeyString string, publicKeyUri string, s3_client *s3.S3) (*rsa.PublicKey, error) {
+
+	if len(publicKeyString) > 0 {
+		publicKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(publicKeyString))
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing RSA public key from jwt-public-key")
+		}
+		return publicKey, nil
+	}
+
+	publicKeyReader, _, err := grw.ReadFromResource(publicKeyUri, "", 4096, false, s3_client)
+	if err != nil {
+		return nil, errors.Wrap(err, "error opening public key at uri "+publicKeyUri)
+	}
+
+	publicKeyBytes, err := publicKeyReader.ReadAllAndClose()
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading public key at uri "+publicKeyUri)
+	}
+
+	publicKey, err := jwt.ParseRSAPublicKeyFromPEM(publicKeyBytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "error parsing RSA public key from "+publicKeyUri)
+	}
+
+	return publicKey, nil
+}
+
+func initPrivateKey(privateKeyString string, privateKeyUri string, s3_client *s3.S3) (*rsa.PrivateKey, error) {
+
+	if len(privateKeyString) > 0 {
+		privateKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKeyString))
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing RSA public key from jwt-private-key")
+		}
+		return privateKey, nil
+	}
+
+	privateKeyReader, _, err := grw.ReadFromResource(privateKeyUri, "", 4096, false, s3_client)
+	if err != nil {
+		return nil, errors.Wrap(err, "error opening private key at uri "+privateKeyUri)
+	}
+
+	privateKeyBytes, err := privateKeyReader.ReadAllAndClose()
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading private key at uri "+privateKeyUri)
+	}
+
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKeyBytes)
+	if err != nil {
+		return nil, errors.Wrap(err, "error parsing RSA private key from "+privateKeyUri)
+	}
+
+	return privateKey, nil
 }
 
 func serveFunction(cmd *cobra.Command, args []string) {
@@ -176,13 +237,22 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	awsSecretAccessKey := v.GetString("aws-secret-access-key")
 	awsSessionToken := v.GetString("aws-session-token")
 
+	// Catalog Flags
+	catalogUri := v.GetString("catalog-uri")
+
+	// Security Flags
+	publicKeyString := v.GetString("jwt-public-key")
+	publicKeyUri := v.GetString("jwt-public-key-uri")
+	privateKeyString := v.GetString("jwt-private-key")
+	privateKeyUri := v.GetString("jwt-private-key-uri")
+
 	// use StringArray since we don't want to split on comma
 	wait := v.GetDuration("wait")
 
 	var aws_session *session.Session
 	var s3_client *s3.S3
 
-	if strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(logDestination, "s3://") {
+	if strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(logDestination, "s3://") || strings.HasPrefix(catalogUri, "s3://") || strings.HasPrefix(publicKeyUri, "s3://") || strings.HasPrefix(privateKeyUri, "s3://") {
 		if verbose {
 			fmt.Println("Connecting to AWS with AWS_ACCESS_KEY_ID " + awsAccessKeyId)
 		}
@@ -198,7 +268,7 @@ func serveFunction(cmd *cobra.Command, args []string) {
 
 	logWriter, err := grw.WriteToResource(logDestination, logCompression, true, s3_client)
 	if err != nil {
-		errorWriter.WriteString(errors.Wrap(err, "error creating log writer").Error())
+		errorWriter.WriteError(errors.Wrap(err, "error creating log writer"))
 		errorWriter.Close()
 		os.Exit(1)
 	}
@@ -207,14 +277,16 @@ func serveFunction(cmd *cobra.Command, args []string) {
 
 	err = railgunCatalog.LoadFromViper(v)
 	if err != nil {
-		fmt.Println(err)
+		errorWriter.WriteError(err)
+		errorWriter.Close()
 		os.Exit(1)
 	}
 
-	if uri := v.GetString("catalog-uri"); len(uri) > 0 {
-		err := railgunCatalog.LoadFromFile(uri, logWriter, errorWriter)
+	if len(catalogUri) > 0 {
+		err := railgunCatalog.LoadFromUri(catalogUri, logWriter, errorWriter, s3_client)
 		if err != nil {
-			fmt.Println(err)
+			errorWriter.WriteError(err)
+			errorWriter.Close()
 			os.Exit(1)
 		}
 	}
@@ -222,7 +294,40 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	logWriter.Flush()
 	errorWriter.Flush()
 
-	router, err := NewRouter(v, railgunCatalog, errorWriter, logWriter, logFormat, verbose)
+	if len(publicKeyString) == 0 && len(publicKeyUri) == 0 {
+		errorWriter.WriteError(errors.New("jwt-public-key or jwt-public-key-uri is required"))
+		errorWriter.Close()
+		os.Exit(1)
+	}
+
+	if len(privateKeyString) == 0 && len(privateKeyUri) == 0 {
+		errorWriter.WriteError(errors.New("jwt-private-key or jwt-private-key-uri is required"))
+		errorWriter.Close()
+		os.Exit(1)
+	}
+
+	publicKey, err := initPublicKey(publicKeyString, publicKeyUri, s3_client)
+	if err != nil {
+		errorWriter.WriteError(errors.Wrap(err, "error initializing public key"))
+		errorWriter.Close()
+		os.Exit(1)
+	}
+
+	privateKey, err := initPrivateKey(privateKeyString, privateKeyUri, s3_client)
+	if err != nil {
+		errorWriter.WriteError(errors.Wrap(err, "error initializing private key"))
+		errorWriter.Close()
+		os.Exit(1)
+	}
+
+	validMethods := v.GetStringArray("jwt-valid-methods")
+	if len(validMethods) == 0 {
+		errorWriter.WriteError(&rerrors.ErrMissingRequiredParameter{Name: "jwt-valid-methods"})
+		errorWriter.Close()
+		os.Exit(1)
+	}
+
+	router, err := NewRouter(v, railgunCatalog, errorWriter, logWriter, logFormat, publicKey, privateKey, validMethods, verbose)
 	if err != nil {
 		errorWriter.WriteString(errors.Wrap(err, "error creating new router").Error())
 		errorWriter.Close()
@@ -319,5 +424,14 @@ func init() {
 	// Catalog Skip Errors
 	serveCmd.Flags().String("catalog-uri", "", "uri of the catalog backend")
 	serveCmd.Flags().BoolP("config-skip-errors", "", false, "skip loading config with bad errors")
+
+	// Security
+	serveCmd.Flags().String("root-password", "", "root user password")
+	serveCmd.Flags().String("jwt-private-key", "", "Private RSA Key for JWT")
+	serveCmd.Flags().String("jwt-private-key-uri", "", "URI to private RSA Key for JWT")
+	serveCmd.Flags().String("jwt-public-key", "", "Public RSA Key for JWT")
+	serveCmd.Flags().String("jwt-public-key-uri", "", "URI to public RSA Key for JWT")
+	serveCmd.Flags().StringArray("jwt-valid-methods", []string{"RS512"}, "Valid methods for JWT")
+	serveCmd.Flags().Duration("jwt-session-duration", 60*time.Minute, "duration of authenticated session")
 
 }
