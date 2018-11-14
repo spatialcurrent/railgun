@@ -388,7 +388,7 @@ func init() {
 	serveCmd.Flags().DurationP("duration", "", time.Second*15, "the duration to wait for graceful shutdown")
 
 	// HTTP Flags
-	serveCmd.Flags().StringSliceP("http-schemes", "", []string{"http"}, "the \"public\" schemes")
+	serveCmd.Flags().StringSlice("http-schemes", []string{"http"}, "the \"public\" schemes")
 	serveCmd.Flags().StringP("http-location", "", "http://localhost:8080/", "the \"public\" location")
 	serveCmd.Flags().StringP("http-address", "a", ":8080", "http bind address")
 	serveCmd.Flags().DurationP("http-timeout-idle", "", time.Second*60, "the idle timeout for the http server")
