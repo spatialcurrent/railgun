@@ -93,25 +93,41 @@ func (h *BaseHandler) ParseAuthorization(str string) (*jwt.StandardClaims, error
 	return token.Claims.(*jwt.StandardClaims), nil
 }
 
-func (h *BaseHandler) GetAWSS3Client() *s3.S3 {
+func (h *BaseHandler) GetAWSSessionId(awsAccessKeyId string, awsSessionToken string) string {
+
+	if len(awsAccessKeyId) > 0 {
+		if len(awsSessionToken) > 0 {
+			return awsAccessKeyId + "\n" + awsSessionToken
+		}
+		return awsAccessKeyId
+	}
+	return "AWS"
+}
+
+func (h *BaseHandler) GetAWSS3Client() (*s3.S3, error) {
 
 	awsDefaultRegion := h.Viper.GetString("aws-default-region")
 	awsAccessKeyId := h.Viper.GetString("aws-access-key-id")
 	awsSecretAccessKey := h.Viper.GetString("aws-secret-access-key")
 	awsSessionToken := h.Viper.GetString("aws-session-token")
 
-	var awsSession *session.Session
-	var s3_client *s3.S3
+	awsSessionId := h.GetAWSSessionId(awsAccessKeyId, awsSessionToken)
 
-	s, found := h.AwsSessionCache.Get(awsAccessKeyId + "\n" + awsSessionToken)
+	var awsSession *session.Session
+
+	s, found := h.AwsSessionCache.Get(awsSessionId)
 	if found {
 		awsSession = s.(*session.Session)
 	} else {
-		awsSession = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
-		h.AwsSessionCache.Set(awsAccessKeyId+"\n"+awsSessionToken, awsSession, gocache.DefaultExpiration)
+		awsSession, err := util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+		if err != nil {
+			return nil, errors.Wrap(err, "error connecting to AWS")
+		}
+		h.AwsSessionCache.Set(awsSessionId, awsSession, gocache.DefaultExpiration)
 	}
-	s3_client = s3.New(awsSession)
-	return s3_client
+
+	return s3.New(awsSession), nil
+
 }
 
 func (h *BaseHandler) ParseBody(r *http.Request, format string) (interface{}, error) {

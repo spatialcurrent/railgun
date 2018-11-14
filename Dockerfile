@@ -8,4 +8,4 @@ EXPOSE 8080
 
 ENTRYPOINT ["/chamber", "exec", "railgun-prod", "--", "/railgun"]
 
-CMD ["--verbose"]
+CMD ["serve", "--verbose"]

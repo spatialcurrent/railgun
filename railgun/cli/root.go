@@ -61,6 +61,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP("aws-secret-access-key", "", "", "AWS Secret Access Key")
 	rootCmd.PersistentFlags().StringP("aws-session-token", "", "", "AWS Session Token")
 	rootCmd.PersistentFlags().StringP("aws-security-token", "", "", "AWS Security Token")
+	rootCmd.PersistentFlags().StringP("aws-container-credentials-relative-uri", "", "", "AWS Container Credentials Relative URI")
 
 	// HDFS Flags
 	rootCmd.PersistentFlags().StringP("hdfs-name-node", "", "", "HDFS Name Node")

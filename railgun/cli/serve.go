@@ -24,7 +24,6 @@ import (
 )
 
 import (
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	gorilla_handlers "github.com/gorilla/handlers"
 	"github.com/pkg/errors"
@@ -236,6 +235,7 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	awsAccessKeyId := v.GetString("aws-access-key-id")
 	awsSecretAccessKey := v.GetString("aws-secret-access-key")
 	awsSessionToken := v.GetString("aws-session-token")
+	//awsContainerCredentialsRelativeUri := v.GetString("aws-container-credentials-relative-uri")
 
 	// Catalog Flags
 	catalogUri := v.GetString("catalog-uri")
@@ -249,14 +249,14 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	// use StringArray since we don't want to split on comma
 	wait := v.GetDuration("wait")
 
-	var aws_session *session.Session
 	var s3_client *s3.S3
 
 	if strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(logDestination, "s3://") || strings.HasPrefix(catalogUri, "s3://") || strings.HasPrefix(publicKeyUri, "s3://") || strings.HasPrefix(privateKeyUri, "s3://") {
-		if verbose {
-			fmt.Println("Connecting to AWS with AWS_ACCESS_KEY_ID " + awsAccessKeyId)
+		aws_session, err := util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+		if err != nil {
+			fmt.Println(errors.Wrap(err, "error connecting to AWS"))
+			os.Exit(1)
 		}
-		aws_session = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
 		s3_client = s3.New(aws_session)
 	}
 

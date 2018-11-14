@@ -9,10 +9,8 @@ package handlers
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
-	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/railgun/railgun/core"
@@ -21,7 +19,6 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/img"
 	"github.com/spatialcurrent/railgun/railgun/named"
 	"github.com/spatialcurrent/railgun/railgun/request"
-	"github.com/spatialcurrent/railgun/railgun/util"
 	"image/color"
 	"math"
 	"net/http"
@@ -146,34 +143,20 @@ func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	pipeline = append(pipeline, named.GroupByTile)
 	//pipeline = append(pipeline, named.Length)
 
-	// AWS Flags
-	awsDefaultRegion := h.Viper.GetString("aws-default-region")
-	awsAccessKeyId := h.Viper.GetString("aws-access-key-id")
-	awsSecretAccessKey := h.Viper.GetString("aws-secret-access-key")
-	awsSessionToken := h.Viper.GetString("aws-session-token")
-
 	// Input Flags
 	inputReaderBufferSize := h.Viper.GetInt("input-reader-buffer-size")
 	inputPassphrase := h.Viper.GetString("input-passphrase")
 	inputSalt := h.Viper.GetString("input-salt")
 
-	var awsSession *session.Session
-	var s3_client *s3.S3
-
 	verbose := h.Viper.GetBool("verbose")
 
+	var s3_client *s3.S3
 	if strings.HasPrefix(inputUriString, "s3://") {
-		if verbose {
-			fmt.Println("Connecting to AWS with AWS_ACCESS_KEY_ID " + awsAccessKeyId)
+		client, err := h.GetAWSS3Client()
+		if err != nil {
+			return errors.Wrap(err, "error connecting to AWS")
 		}
-		s, found := h.AwsSessionCache.Get(awsAccessKeyId + "\n" + awsSessionToken)
-		if found {
-			awsSession = s.(*session.Session)
-		} else {
-			awsSession = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
-			h.AwsSessionCache.Set(awsAccessKeyId+"\n"+awsSessionToken, awsSession, gocache.DefaultExpiration)
-		}
-		s3_client = s3.New(awsSession)
+		s3_client = client
 	}
 
 	hit, inputObject, err := layer.Cache.Get(

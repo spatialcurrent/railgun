@@ -8,8 +8,6 @@
 package handlers
 
 import (
-	"fmt"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	gocache "github.com/patrickmn/go-cache"
@@ -43,8 +41,6 @@ func (h *ItemsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs request.QueryString) error {
-
-	verbose := h.Viper.GetBool("verbose")
 
 	layer, ok := h.Catalog.GetLayer(vars["name"])
 	if !ok {
@@ -95,12 +91,6 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		pipeline = append(pipeline, named.GeoJSONLinesToGeoJSON)
 	}
 
-	// AWS Flags
-	awsDefaultRegion := h.Viper.GetString("aws-default-region")
-	awsAccessKeyId := h.Viper.GetString("aws-access-key-id")
-	awsSecretAccessKey := h.Viper.GetString("aws-secret-access-key")
-	awsSessionToken := h.Viper.GetString("aws-session-token")
-
 	// Input Flags
 	inputReaderBufferSize := h.Viper.GetInt("input-reader-buffer-size")
 	inputPassphrase := h.Viper.GetString("input-passphrase")
@@ -111,21 +101,13 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		return errors.Wrap(err, "error evaluating datastore uri")
 	}
 
-	var awsSession *session.Session
 	var s3_client *s3.S3
-
 	if strings.HasPrefix(inputUriString, "s3://") {
-		if verbose {
-			fmt.Println("Connecting to AWS with AWS_ACCESS_KEY_ID " + awsAccessKeyId)
+		client, err := h.GetAWSS3Client()
+		if err != nil {
+			return errors.Wrap(err, "error connecting to AWS")
 		}
-		s, found := h.AwsSessionCache.Get(awsAccessKeyId + "\n" + awsSessionToken)
-		if found {
-			awsSession = s.(*session.Session)
-		} else {
-			awsSession = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
-			h.AwsSessionCache.Set(awsAccessKeyId+"\n"+awsSessionToken, awsSession, gocache.DefaultExpiration)
-		}
-		s3_client = s3.New(awsSession)
+		s3_client = client
 	}
 
 	inputFormat := layer.DataStore.Format

@@ -130,7 +130,11 @@ func (h *GroupHandler) Post(w http.ResponseWriter, r *http.Request, format strin
 
 		var s3_client *s3.S3
 		if strings.HasPrefix(catalogUri, "s3://") {
-			s3_client = h.GetAWSS3Client()
+			client, err := h.GetAWSS3Client()
+			if err != nil {
+				return nil, errors.Wrap(err, "error connecting to AWS")
+			}
+			s3_client = client
 		}
 
 		err = h.Catalog.SaveToUri(catalogUri, s3_client)

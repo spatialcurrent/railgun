@@ -31,7 +31,6 @@ import (
 )
 
 import (
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
@@ -503,11 +502,14 @@ func processFunction(cmd *cobra.Command, args []string) {
 	logCompression := v.GetString("log-compression")
 	//logFormat := v.GetString("log-format")
 
-	var aws_session *session.Session
 	var s3_client *s3.S3
 
 	if strings.HasPrefix(inputUri, "s3://") || strings.HasPrefix(outputUri, "s3://") || strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(logDestination, "s3://") {
-		aws_session = util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+		aws_session, err := util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+		if err != nil {
+			fmt.Println(errors.Wrap(err, "error connecting to AWS"))
+			os.Exit(1)
+		}
 		s3_client = s3.New(aws_session)
 	}
 

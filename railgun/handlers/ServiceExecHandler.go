@@ -9,6 +9,7 @@ package handlers
 
 import (
 	//"fmt"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
@@ -19,6 +20,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/parser"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"net/http"
+	"strings"
 	//"reflect"
 )
 
@@ -98,7 +100,16 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, errors.Wrap(err, "invalid data store uri")
 	}
 
-	inputReader, _, err := grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, h.GetAWSS3Client())
+	var s3_client *s3.S3
+	if strings.HasPrefix(inputUri, "s3://") {
+		client, err := h.GetAWSS3Client()
+		if err != nil {
+			return nil, errors.Wrap(err, "error connecting to AWS")
+		}
+		s3_client = client
+	}
+
+	inputReader, _, err := grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, s3_client)
 	if err != nil {
 		return nil, errors.Wrap(err, "error opening resource at uri "+inputUri)
 	}
