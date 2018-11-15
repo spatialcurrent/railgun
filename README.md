@@ -110,6 +110,16 @@ You can compile GSS to pure JavaScript with the `scripts/build_javascript.sh` sc
 
 The default destination for build artifacts is `railgun/bin`, but you can change the destination with a CLI argument.  For building on a Chromebook consider saving the artifacts in `/usr/local/go/bin`, e.g., `bash scripts/build_cli.sh /usr/local/go/bin`
 
+# Deploying
+
+```
+mkdir -p /usr/local/terraform
+aws-vault exec default -- terraform init # to download aws provider
+cp -R .terraform/plugins/linux_amd64/terraform-provider-aws_v1.43.2_x4 /usr/local/terraform
+aws-vault exec default -- terraform init -plugin-dir=/usr/local/terraform
+aws-vault exec default -- terraform plan
+```
+
 # Contributing
 
 [Spatial Current, Inc.](https://spatialcurrent.io) is currently accepting pull requests for this repository.  We'd love to have your contributions!  Please see [Contributing.md](https://github.com/spatialcurrent/railgun/blob/master/CONTRIBUTING.md) for how to get started.

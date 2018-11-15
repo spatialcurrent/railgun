@@ -6,3 +6,6 @@ Gopkg.lock
 data
 tmp
 secret/
+*.tfstate
+.terraform/
+*.backup

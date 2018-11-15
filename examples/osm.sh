@@ -43,8 +43,10 @@ go run cmd/railgun/main.go client datastores add \
 --name amenities \
 --title Amenities \
 --description 'Amenities from OpenStreetMap' \
---uri "s3://$RAILGUN_BUCKET/workspace/osm/datastore/amenities/amenities.geojsonl.gz" \
---extent '[-77.5195609,38.8099849,-76.9102596,39.1546259]'
+--extent '[-77.5195609,38.8099849,-76.9102596,39.1546259]' \
+--uri "s3://$RAILGUN_BUCKET/workspace/osm/datastore/amenities/amenities.geojsonl.gz"
+#--extent '[-77.5195609,38.8099849,-76.9102596,39.1546259]'
+#--uri '~/Downloads/dc_amenities.geojsonl' \
 
 #go run cmd/railgun/main.go client datastores add \
 #--workspace osm \
