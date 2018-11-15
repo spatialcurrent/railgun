@@ -19,6 +19,7 @@ import (
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/parser"
 	"github.com/spatialcurrent/railgun/railgun/util"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	//"reflect"
@@ -73,9 +74,9 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
 	}
 
-	obj, err := h.ParseBody(r, format)
+	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error reading from request body")
 	}
 
 	variables := map[string]interface{}{}
@@ -83,16 +84,20 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		variables[k] = v
 	}
 
-	jobVariables, err := parser.ParseMap(obj, "variables")
-	if err != nil {
-		return nil, &rerrors.ErrInvalidParameter{Name: "variables", Value: gtg.TryGetString(obj, "variables", "")}
-	}
-	//jobVariablesValue := reflect.ValueOf(jobVariables)
-	//for _, k := range jobVariablesValue.MapKeys() {
-	//  variables[fmt.Sprint(k.Interface())] = jobVariablesValue.MapIndex(k).Interface()
-	//}
-	for k, v := range jobVariables {
-		variables[k] = v
+	if len(body) > 0 {
+		obj, err := h.ParseBody(body, format)
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing body")
+		}
+
+		jobVariables, err := parser.ParseMap(obj, "variables")
+		if err != nil {
+			return nil, &rerrors.ErrInvalidParameter{Name: "variables", Value: gtg.TryGetString(obj, "variables", "")}
+		}
+
+		for k, v := range jobVariables {
+			variables[k] = v
+		}
 	}
 
 	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)

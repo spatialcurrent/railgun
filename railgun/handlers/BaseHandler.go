@@ -26,7 +26,6 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spatialcurrent/viper"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -127,20 +126,18 @@ func (h *BaseHandler) GetAWSS3Client() (*s3.S3, error) {
 	return s3.New(awsSession), nil
 }
 
-func (h *BaseHandler) ParseBody(r *http.Request, format string) (interface{}, error) {
-	inputBytes, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
+func (h *BaseHandler) ParseBody(inputBytes []byte, format string) (interface{}, error) {
 
 	inputType, err := gss.GetType(inputBytes, format)
 	if err != nil {
 		return nil, err
 	}
 
+	fmt.Println("Bytes:", string(inputBytes))
+
 	inputObject, err := gss.DeserializeBytes(inputBytes, format, []string{}, "", false, gss.NoLimit, inputType, false)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error deserializing body")
 	}
 
 	return inputObject, nil

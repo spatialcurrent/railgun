@@ -12,6 +12,7 @@ import (
 	"github.com/spatialcurrent/go-try-get/gtg"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/util"
+	"io/ioutil"
 	"net/http"
 	"reflect"
 )
@@ -56,17 +57,22 @@ func (h *AuthenticateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 func (h *AuthenticateHandler) Post(w http.ResponseWriter, r *http.Request, format string) (int, interface{}, error) {
 
-	body, err := h.ParseBody(r, format)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return http.StatusInternalServerError, nil, errors.Wrap(err, "error reading from request body")
+	}
+
+	inputObject, err := h.ParseBody(body, format)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
 
-	username := gtg.TryGetString(body, "username", "")
+	username := gtg.TryGetString(inputObject, "username", "")
 	if len(username) == 0 {
 		return http.StatusBadRequest, nil, &rerrors.ErrMissingRequiredParameter{Name: "username"}
 	}
 
-	password := gtg.TryGetString(body, "password", "")
+	password := gtg.TryGetString(inputObject, "password", "")
 	if len(password) == 0 {
 		return http.StatusBadRequest, nil, &rerrors.ErrMissingRequiredParameter{Name: "password"}
 	}
@@ -74,29 +80,29 @@ func (h *AuthenticateHandler) Post(w http.ResponseWriter, r *http.Request, forma
 	if rootPassword := h.Viper.GetString("root-password"); len(rootPassword) > 0 {
 		if username == "root" {
 			if password != rootPassword {
-				obj := map[string]interface{}{
+				outputObject := map[string]interface{}{
 					"success":  false,
 					"username": username,
 					"message":  "error authenticating as " + username,
 				}
-				return http.StatusUnauthorized, obj, nil
+				return http.StatusUnauthorized, outputObject, nil
 			}
 			token, err := h.NewAuthorization(r, username)
 			if err != nil {
-				obj := map[string]interface{}{
+				outputObject := map[string]interface{}{
 					"success":  false,
 					"username": username,
 					"message":  "error authenticating as " + username,
 				}
-				return http.StatusInternalServerError, obj, nil
+				return http.StatusInternalServerError, outputObject, nil
 			} else {
-				obj := map[string]interface{}{
+				outputObject := map[string]interface{}{
 					"success":  true,
 					"username": username,
 					"message":  "authenticated as " + username,
 					"token":    token,
 				}
-				return http.StatusOK, obj, nil
+				return http.StatusOK, outputObject, nil
 			}
 		}
 	}

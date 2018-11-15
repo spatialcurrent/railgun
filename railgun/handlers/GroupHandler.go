@@ -14,6 +14,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/util"
+	"io/ioutil"
 	"net/http"
 	"reflect"
 	"strings"
@@ -110,17 +111,22 @@ func (h *GroupHandler) Post(w http.ResponseWriter, r *http.Request, format strin
 		return nil, errors.New("not authorized")
 	}
 
-	body, err := h.ParseBody(r, format)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading from request body")
+	}
+
+	obj, err := h.ParseBody(body, format)
 	if err != nil {
 		return nil, err
 	}
 
-	obj, err := h.Catalog.ParseItem(body, h.Type)
+	item, err := h.Catalog.ParseItem(obj, h.Type)
 	if err != nil {
 		return nil, err
 	}
 
-	err = h.Catalog.Add(obj)
+	err = h.Catalog.Add(item)
 	if err != nil {
 		return nil, err
 	}
@@ -143,9 +149,9 @@ func (h *GroupHandler) Post(w http.ResponseWriter, r *http.Request, format strin
 		}
 	}
 
-	if m, ok := obj.(core.Mapper); ok {
+	if m, ok := item.(core.Mapper); ok {
 		return map[string]interface{}{"success": true, "object": m.Map()}, nil
 	}
 
-	return nil, &rerrors.ErrInvalidType{Value: reflect.TypeOf(obj), Type: reflect.TypeOf((*core.Mapper)(nil))}
+	return nil, &rerrors.ErrInvalidType{Value: reflect.TypeOf(item), Type: reflect.TypeOf((*core.Mapper)(nil))}
 }
