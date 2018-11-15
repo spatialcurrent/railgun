@@ -25,7 +25,6 @@ import (
 
 import (
 	"github.com/aws/aws-sdk-go/service/s3"
-	gorilla_handlers "github.com/gorilla/handlers"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
@@ -327,14 +326,12 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	router, err := NewRouter(v, railgunCatalog, errorWriter, logWriter, logFormat, publicKey, privateKey, validMethods, verbose)
+	handler, err := NewRouter(v, railgunCatalog, errorWriter, logWriter, logFormat, publicKey, privateKey, validMethods, verbose)
 	if err != nil {
 		errorWriter.WriteString(errors.Wrap(err, "error creating new router").Error())
 		errorWriter.Close()
 		os.Exit(1)
 	}
-
-	handler := gorilla_handlers.CompressHandler(router)
 
 	srv := &http.Server{
 		Addr:         address,
@@ -389,11 +386,12 @@ func init() {
 
 	// HTTP Flags
 	serveCmd.Flags().StringSlice("http-schemes", []string{"http"}, "the \"public\" schemes")
-	serveCmd.Flags().StringP("http-location", "", "http://localhost:8080/", "the \"public\" location")
+	serveCmd.Flags().StringP("http-location", "", "http://localhost:8080", "the \"public\" location")
 	serveCmd.Flags().StringP("http-address", "a", ":8080", "http bind address")
 	serveCmd.Flags().DurationP("http-timeout-idle", "", time.Second*60, "the idle timeout for the http server")
 	serveCmd.Flags().DurationP("http-timeout-read", "", time.Second*15, "the read timeout for the http server")
 	serveCmd.Flags().DurationP("http-timeout-write", "", time.Second*15, "the write timeout for the http server")
+	serveCmd.Flags().BoolP("http-middleware-gzip", "", false, "enable GZIP middleware")
 
 	// Cache Flags
 	serveCmd.Flags().DurationP("cache-default-expiration", "", time.Minute*5, "the default exipration for items in the cache")

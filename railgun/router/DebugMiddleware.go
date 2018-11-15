@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-var DebugMiddleWare = func(next http.Handler) http.Handler {
+var DebugMiddleware = func(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		requestObject := map[string]string{

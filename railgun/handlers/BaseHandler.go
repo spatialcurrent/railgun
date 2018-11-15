@@ -200,6 +200,7 @@ func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, o
       </body>
     </html>
    `
+		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(statusCode)
 		w.Write([]byte(html))
 		return nil
@@ -209,16 +210,22 @@ func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, o
 	if err != nil {
 		return errors.Wrap(err, "error serializing response body")
 	}
-	w.WriteHeader(statusCode)
+
+	contentType := "text/plain; charset=utf-8"
 	switch format {
 	case "bson":
-		w.Header().Set("Content-Type", "application/ubjson")
+		contentType = "application/ubjson"
 	case "json":
-		w.Header().Set("Content-Type", "application/json")
+		contentType = "application/json"
 	case "toml":
-		w.Header().Set("Content-Type", "application/toml")
-	case "yaml":
-		w.Header().Set("Content-Type", "text/yaml")
+		contentType = "application/toml"
+	case "yaml", "yml":
+		contentType = "text/yaml"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	if statusCode != http.StatusOK {
+		w.WriteHeader(statusCode)
 	}
 	w.Write(b)
 	return nil

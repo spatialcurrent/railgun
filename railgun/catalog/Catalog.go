@@ -8,7 +8,6 @@
 package catalog
 
 import (
-	"fmt"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"reflect"
@@ -50,7 +49,6 @@ func (c *Catalog) Get(name string, t reflect.Type) (core.Base, bool) {
 	if index, ok := c.indices[typeName]; ok {
 		if position, ok := index[name]; ok {
 			if objects, ok := c.objects[typeName]; ok {
-				fmt.Println("Position:", position)
 				obj := reflect.ValueOf(objects).Index(position).Interface()
 				if base, ok := obj.(core.Base); ok {
 					return base, true

@@ -1,8 +1,10 @@
 package router
 
 import (
+	"compress/gzip"
 	"crypto/rsa"
 	"fmt"
+	"github.com/NYTimes/gziphandler"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/spatialcurrent/go-adaptive-functions/af"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
@@ -38,13 +40,18 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 		SessionDuration: v.GetDuration("jwt-session-duration"),
 	}
 
-	r.Use(DebugMiddleWare)
-
+	//r.Use(GzipMiddleware)
+	if v.GetBool("http-middleware-gzip") {
+		r.Use(gziphandler.MustNewGzipLevelHandler(gzip.DefaultCompression))
+	}
+	r.Use(DebugMiddleware)
 	r.Use(CorsMiddleware(v.GetString("cors-origin"), v.GetString("cors-credentials")))
 
-	r.AddSwaggerHandler("home", "/")
+	r.AddHomeHandler("home", "/")
 
 	r.AddSwaggerHandler("swagger", "/swagger.{ext}")
+
+	r.AddHealthHandler("health", "/health.{ext}")
 
 	r.AddAuthenticateHandler("authenticate", "/authenticate.{ext}")
 
@@ -154,7 +161,7 @@ func (r *RailgunRouter) AddObjectHandler(name string, path string, object interf
 
 func (r *RailgunRouter) AddGroupHandler(name string, path string, t reflect.Type) {
 
-	fmt.Println("Adding group handler " + name + " at path " + path)
+	fmt.Println("* adding group handler " + name + " at path " + path)
 
 	r.Methods("GET", "POST", "PUT", "OPTIONS").Name(name).Path(path).Handler(&handlers.GroupHandler{
 		Type:        t,
@@ -173,6 +180,12 @@ func (r *RailgunRouter) AddItemHandler(name string, path string, t reflect.Type,
 
 func (r *RailgunRouter) AddSwaggerHandler(name string, path string) {
 	r.Methods("GET").Name(name).Path(path).Handler(&handlers.SwaggerHandler{
+		BaseHandler: r.NewBaseHandler(),
+	})
+}
+
+func (r *RailgunRouter) AddHealthHandler(name string, path string) {
+	r.Methods("GET").Name(name).Path(path).Handler(&handlers.HealthHandler{
 		BaseHandler: r.NewBaseHandler(),
 	})
 }
