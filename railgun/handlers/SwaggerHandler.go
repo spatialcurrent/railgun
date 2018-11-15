@@ -342,7 +342,7 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 				},
 			},
 		},
-		"/services/exec.{ext}": swagger.Path{
+		"/services/{name}/exec.{ext}": swagger.Path{
 			Post: swagger.Operation{
 				Description: "execute a service on the Railgun Server with the given job input",
 				Tags:        []string{"Services"},
@@ -360,11 +360,18 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 				},
 				Parameters: []swagger.Parameter{
 					swagger.Parameter{
+						Name:        "name",
+						Type:        "string",
+						Description: fmt.Sprintf("the name of the %s to execute on the Railgun Server", "service"),
+						In:          "path",
+						Required:    true,
+					},
+					swagger.Parameter{
 						Name:        "job",
 						Type:        "",
 						Description: fmt.Sprintf("the %s to execute on the Railgun Server", "job"),
 						In:          "body",
-						Required:    true,
+						Required:    false,
 						Schema: &swagger.Schema{
 							Ref: fmt.Sprintf("#/definitions/%s", "Job"),
 						},
