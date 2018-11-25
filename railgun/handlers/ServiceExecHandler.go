@@ -8,14 +8,22 @@
 package handlers
 
 import (
+	"bufio"
+	"compress/bzip2"
+	"compress/gzip"
+	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 )
 
 import (
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/golang/snappy"
 	"github.com/gorilla/mux"
+	"github.com/mitchellh/go-homedir"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
@@ -31,6 +39,9 @@ type ServiceExecHandler struct {
 	*BaseHandler
 	Cache *gocache.Cache
 }
+
+var cacheKeyDataStoreFormat = "%s/datastore/%d"
+var cacheKeyServiceFormat = "%s/variables"
 
 func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
@@ -84,11 +95,13 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 	variables := map[string]interface{}{}
 
+	cacheKeyService := fmt.Sprintf(cacheKeyServiceFormat, serviceName)
+
 	// Load variables from cache
-	if cacheVariables, found := h.Cache.Get(serviceName + "/variables"); found {
-		if m, ok := cacheVariables.(map[string]interface{}); ok {
-			h.Messages <- "variables found in cache " + serviceName + "/variables"
-			for k, v := range m {
+	if cacheVariables, found := h.Cache.Get(cacheKeyService); found {
+		if m, ok := cacheVariables.(*map[string]interface{}); ok {
+			h.Messages <- "variables found in cache " + cacheKeyService
+			for k, v := range *m {
 				variables[k] = v
 			}
 		}
@@ -121,44 +134,162 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, errors.Wrap(err, "invalid data store uri")
 	}
 
+	inputScheme, inputPath := grw.SplitUri(inputUri)
+
+	cacheKeyDataStore := ""
+	var inputReader grw.ByteReadCloser
+	var inputObject interface{}
 	var s3_client *s3.S3
-	if strings.HasPrefix(inputUri, "s3://") {
-		client, err := h.GetAWSS3Client()
+	if inputScheme == "s3" {
+
+		s3_client, err = h.GetAWSS3Client()
 		if err != nil {
 			return nil, errors.Wrap(err, "error connecting to AWS")
 		}
-		s3_client = client
+		//s3_client = client
+
+		i := strings.Index(inputPath, "/")
+		if i == -1 {
+			return nil, errors.New("path missing bucket")
+		}
+
+		bucket := inputPath[0:i]
+		key := inputPath[i+1:]
+
+		headObjectOutput, err := s3_client.HeadObject(&s3.HeadObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "error heading S3 object")
+		}
+
+		cacheKeyDataStore = fmt.Sprintf(cacheKeyDataStoreFormat, service.DataStore.Name, headObjectOutput.LastModified.UnixNano())
+		fmt.Println("cache key:", cacheKeyDataStore)
+
+		if object, found := h.Cache.Get(cacheKeyDataStore); found {
+			fmt.Println("cache hit for datastore with key " + cacheKeyDataStore)
+			inputObject = object
+		} else {
+			fmt.Println("cache miss for datastore with key " + cacheKeyDataStore)
+			inputReader, _, err = grw.ReadS3Object(bucket, key, service.DataStore.Compression, false, s3_client)
+			if err != nil {
+				return nil, errors.Wrap(err, "error opening resource at uri "+inputUri)
+			}
+		}
+
+	} else if inputScheme == "" || inputScheme == "file" {
+		inputPathExpanded, err := homedir.Expand(inputPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "error expanding file at path "+inputPath)
+		}
+
+		inputFile, err := os.Open(inputPathExpanded)
+		if err != nil {
+			return nil, errors.Wrap(err, "error opening file at path "+inputPath)
+		}
+
+		inputFileInfo, err := inputFile.Stat()
+		if err != nil {
+			return nil, errors.Wrap(err, "error stating file at path "+inputPath)
+		}
+
+		cacheKeyDataStore = fmt.Sprintf(cacheKeyDataStoreFormat, service.DataStore.Name, inputFileInfo.ModTime().UnixNano())
+
+		if object, found := h.Cache.Get(cacheKeyDataStore); found {
+			fmt.Println("cache hit for datastore with key " + cacheKeyDataStore)
+			inputObject = object
+		} else {
+			switch service.DataStore.Compression {
+			case "snappy":
+				inputReader = &grw.Reader{
+					Reader: bufio.NewReader(snappy.NewReader(bufio.NewReader(inputFile))),
+					File:   inputFile,
+				}
+			case "gzip":
+				gr, err := gzip.NewReader(bufio.NewReader(inputFile))
+				if err != nil {
+					return nil, errors.Wrap(err, "error creating gzip reader for file \""+inputPath+"\"")
+				}
+				inputReader = &grw.Reader{
+					Reader: bufio.NewReader(gr),
+					Closer: gr,
+					File:   inputFile,
+				}
+			case "bzip2":
+				inputReader = &grw.Reader{
+					Reader: bufio.NewReader(bzip2.NewReader(bufio.NewReader(inputFile))),
+					File:   inputFile,
+				}
+			case "zip":
+				inputReader, err = grw.ReadZipFile(inputPathExpanded, false)
+				if err != nil {
+					return nil, errors.Wrap(err, "error creating gzip reader for file \""+inputPath+"\"")
+				}
+			case "none", "":
+				inputReader = &grw.Reader{Reader: bufio.NewReader(inputFile), File: inputFile}
+			}
+		}
+
 	}
 
-	inputReader, _, err := grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, s3_client)
-	if err != nil {
-		return nil, errors.Wrap(err, "error opening resource at uri "+inputUri)
+	if inputObject == nil {
+
+		fmt.Println("Input Object is nil")
+
+		if inputReader == nil {
+			inputReader, _, err = grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, s3_client)
+			if err != nil {
+				return nil, errors.Wrap(err, "error opening resource at uri "+inputUri)
+			}
+		}
+
+		fmt.Println("Input Reader:", inputReader)
+
+		inputBytes, err := inputReader.ReadAllAndClose()
+		if err != nil {
+			return nil, errors.Wrap(err, "error reading from resource at uri "+inputUri)
+		}
+
+		fmt.Println("Input Bytes:", len(inputBytes))
+
+		inputFormat := service.DataStore.Format
+
+		inputType, err := gss.GetType(inputBytes, inputFormat)
+		if err != nil {
+			return nil, errors.Wrap(err, "error getting type for input")
+		}
+
+		fmt.Println("Deserializing")
+
+		object, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false)
+		if err != nil {
+			return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
+		}
+
+		inputObject = object
+
 	}
 
-	inputBytes, err := inputReader.ReadAllAndClose()
-	if err != nil {
-		return nil, errors.Wrap(err, "error reading from resource at uri "+inputUri)
+	fmt.Println("saving to cache")
+
+	if len(cacheKeyDataStore) > 0 {
+		h.Cache.Set(cacheKeyDataStore, inputObject, gocache.DefaultExpiration)
 	}
 
-	inputFormat := service.DataStore.Format
-
-	inputType, err := gss.GetType(inputBytes, inputFormat)
-	if err != nil {
-		return nil, errors.Wrap(err, "error getting type for input")
-	}
-
-	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false)
-	if err != nil {
-		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
-	}
+	fmt.Println("evaluating")
 
 	variables, outputObject, err := service.Process.Node.Evaluate(variables, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
 	}
 
+	fmt.Println("saving variables")
+
 	// Set the variables to the cache every time to bump the expiration
-	h.Cache.Set(serviceName+"/variables", variables, gocache.DefaultExpiration)
+	h.Cache.Set(cacheKeyService, &variables, gocache.DefaultExpiration)
+
+	fmt.Println("variables saved")
 
 	return outputObject, nil
 
