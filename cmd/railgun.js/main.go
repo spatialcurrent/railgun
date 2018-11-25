@@ -20,16 +20,16 @@ import (
 )
 
 import (
+	"github.com/gopherjs/gopherjs/js"
+	"honnef.co/go/js/console"
+)
+
+import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-dfl/dfljs"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/go-simple-serializer/gssjs"
 	"github.com/spatialcurrent/railgun/railgun"
-)
-
-import (
-	"github.com/gopherjs/gopherjs/js"
-	"honnef.co/go/js/console"
 )
 
 func main() {
@@ -63,15 +63,16 @@ func Process(in interface{}, options *js.Object) interface{} {
 		m[key] = options.Get(key).Interface()
 	}
 
-	input_header := []string{}
-	input_comment := ""
-	input_format := ""
-	input_lazy_quotes := false
-	input_limit := gss.NoLimit
+	input_header := gss.NoHeader
+	inputComment := gss.NoComment
+	inputFormat := ""
+	inputLazyQuotes := false
+	inputSkipLines := gss.NoSkip
+	inputLimit := gss.NoLimit
 
-	output_format := ""
-	output_header := []string{}
-	output_limit := gss.NoLimit
+	outputFormat := ""
+	outputHeader := gss.NoHeader
+	outputLimit := gss.NoLimit
 	dfl_exp := ""
 
 	if v, ok := m["input_header"]; ok {
@@ -86,57 +87,64 @@ func Process(in interface{}, options *js.Object) interface{} {
 		}
 	}
 
-	if v, ok := m["input_comment"]; ok {
+	if v, ok := m["inputComment"]; ok {
 		switch v.(type) {
 		case string:
-			input_comment = v.(string)
+			inputComment = v.(string)
 		}
 	}
 
-	if v, ok := m["input_format"]; ok {
+	if v, ok := m["inputFormat"]; ok {
 		switch v.(type) {
 		case string:
-			input_format = v.(string)
+			inputFormat = v.(string)
 		}
 	}
 
-	if v, ok := m["input_lazy_quotes"]; ok {
+	if v, ok := m["inputLazyQuotes"]; ok {
 		switch v.(type) {
 		case bool:
-			input_lazy_quotes = v.(bool)
+			inputLazyQuotes = v.(bool)
 		}
 	}
 
-	if v, ok := m["input_limit"]; ok {
+	if v, ok := m["inputSkipLines"]; ok {
 		switch v.(type) {
 		case int:
-			input_limit = v.(int)
+			inputSkipLines = v.(int)
 		}
 	}
 
-	if v, ok := m["output_format"]; ok {
+	if v, ok := m["inputLimit"]; ok {
+		switch v.(type) {
+		case int:
+			inputLimit = v.(int)
+		}
+	}
+
+	if v, ok := m["outputFormat"]; ok {
 		switch v.(type) {
 		case string:
-			output_format = v.(string)
+			outputFormat = v.(string)
 		}
 	}
 
-	if v, ok := m["output_header"]; ok {
+	if v, ok := m["outputHeader"]; ok {
 		switch v.(type) {
 		case []string:
-			output_header = v.([]string)
+			outputHeader = v.([]string)
 		case []interface{}:
-			output_header = make([]string, 0, len(v.([]interface{})))
+			outputHeader = make([]string, 0, len(v.([]interface{})))
 			for _, h := range v.([]interface{}) {
-				output_header = append(output_header, fmt.Sprint(h))
+				outputHeader = append(outputHeader, fmt.Sprint(h))
 			}
 		}
 	}
 
-	if v, ok := m["output_limit"]; ok {
+	if v, ok := m["outputLimit"]; ok {
 		switch v.(type) {
 		case int:
-			output_limit = v.(int)
+			outputLimit = v.(int)
 		}
 	}
 
@@ -144,14 +152,14 @@ func Process(in interface{}, options *js.Object) interface{} {
 
 	switch in.(type) {
 	case string:
-		input_type, err := gss.GetType([]byte(in.(string)), input_format)
+		input_type, err := gss.GetType([]byte(in.(string)), inputFormat)
 		if err != nil {
 			console.Error(errors.Wrap(err, "error geting type for input").Error())
 			return ""
 		}
-		input_object, err := gss.DeserializeString(in.(string), input_format, input_header, input_comment, input_lazy_quotes, input_limit, input_type, false)
+		input_object, err := gss.DeserializeString(in.(string), inputFormat, input_header, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, input_type, false)
 		if err != nil {
-			console.Error(errors.Wrap(err, "error deserializing input using format "+input_format).Error())
+			console.Error(errors.Wrap(err, "error deserializing input using format "+inputFormat).Error())
 			return ""
 		}
 		ctx = input_object
@@ -205,10 +213,10 @@ func Process(in interface{}, options *js.Object) interface{} {
 
 	output = gss.StringifyMapKeys(output)
 
-	if len(output_format) > 0 {
-		output_string, err := gss.SerializeString(output, output_format, output_header, output_limit)
+	if len(outputFormat) > 0 {
+		output_string, err := gss.SerializeString(output, outputFormat, outputHeader, outputLimit)
 		if err != nil {
-			console.Error(errors.Wrap(err, "Error converting to output format "+output_format).Error())
+			console.Error(errors.Wrap(err, "Error converting to output format "+outputFormat).Error())
 			return ""
 		}
 		return output_string
