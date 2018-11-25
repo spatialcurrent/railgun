@@ -235,7 +235,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 	if inputObject == nil {
 
-		fmt.Println("Input Object is nil")
+		//fmt.Println("Input Object is nil")
 
 		if inputReader == nil {
 			inputReader, _, err = grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, s3_client)
@@ -244,14 +244,14 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 			}
 		}
 
-		fmt.Println("Input Reader:", inputReader)
+		//fmt.Println("Input Reader:", inputReader)
 
 		inputBytes, err := inputReader.ReadAllAndClose()
 		if err != nil {
 			return nil, errors.Wrap(err, "error reading from resource at uri "+inputUri)
 		}
 
-		fmt.Println("Input Bytes:", len(inputBytes))
+		//fmt.Println("Input Bytes:", len(inputBytes))
 
 		inputFormat := service.DataStore.Format
 
@@ -260,7 +260,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 			return nil, errors.Wrap(err, "error getting type for input")
 		}
 
-		fmt.Println("Deserializing")
+		//fmt.Println("Deserializing")
 
 		object, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false)
 		if err != nil {
@@ -271,25 +271,25 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 	}
 
-	fmt.Println("saving to cache")
+	//fmt.Println("saving to cache")
 
 	if len(cacheKeyDataStore) > 0 {
 		h.Cache.Set(cacheKeyDataStore, inputObject, gocache.DefaultExpiration)
 	}
 
-	fmt.Println("evaluating")
+	//fmt.Println("evaluating")
 
 	variables, outputObject, err := service.Process.Node.Evaluate(variables, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
 	}
 
-	fmt.Println("saving variables")
+	//fmt.Println("saving variables")
 
 	// Set the variables to the cache every time to bump the expiration
 	h.Cache.Set(cacheKeyService, &variables, gocache.DefaultExpiration)
 
-	fmt.Println("variables saved")
+	//fmt.Println("variables saved")
 
 	return outputObject, nil
 
