@@ -14,7 +14,7 @@ import (
 	"github.com/spatialcurrent/cobra"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/go-try-get/gtg"
+	//"github.com/spatialcurrent/go-try-get/gtg"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spatialcurrent/viper"
@@ -69,6 +69,9 @@ func MakeRequest(input *RequestInput, outputWriter grw.ByteWriteCloser, errorWri
 			return err
 		}
 		if verbose {
+			fmt.Println("Url:\n", input.Url)
+		}
+		if verbose {
 			fmt.Println("Body:\n", string(inputBytes))
 		}
 		r, err := http.NewRequest(input.Method, input.Url, bytes.NewBuffer(inputBytes))
@@ -99,12 +102,20 @@ func MakeRequest(input *RequestInput, outputWriter grw.ByteWriteCloser, errorWri
 		return err
 	}
 
+	if len(respBytes) == 0 {
+		return errors.New("no response from server")
+	}
+
+	if verbose {
+		fmt.Println("Response:\n", string(respBytes))
+	}
+
 	respType, err := gss.GetType(respBytes, "json")
 	if err != nil {
 		return err
 	}
 
-	respObject, err := gss.DeserializeBytes(respBytes, "json", []string{}, "", false, gss.NoLimit, respType, false)
+	respObject, err := gss.DeserializeBytes(respBytes, "json", []string{}, "", false, gss.NoSkip, gss.NoLimit, respType, false)
 	if err != nil {
 		return err
 	}
@@ -148,7 +159,7 @@ func handleList(url string, outputWriter grw.ByteWriteCloser, errorWriter grw.By
 	outputWriter.Flush()
 }
 
-func newPostCommand(use string, short string, long string, path string, inputType reflect.Type) *cobra.Command {
+func newPostCommand(use string, short string, long string, path string, params []string, inputType reflect.Type) *cobra.Command {
 	return &cobra.Command{
 		Use:   use,
 		Short: short,
@@ -195,7 +206,16 @@ func newPostCommand(use string, short string, long string, path string, inputTyp
 					}
 				}
 
-				u := v.GetString("server") + strings.Replace(strings.Replace(path, "{name}", gtg.TryGetString(inputObject, "name", ""), 1), "{ext}", "json", 1)
+				u := v.GetString("server") + strings.Replace(path, "{ext}", "json", 1)
+				obj := map[string]interface{}{}
+				for _, name := range params {
+					value := v.GetString(name)
+					if len(value) == 0 {
+						return errors.New("missing " + name)
+					}
+					obj[name] = value
+					u = strings.Replace(u, "{"+name+"}", value, 1)
+				}
 
 				u2, err := url.Parse(u)
 				if err != nil {
@@ -439,6 +459,7 @@ func init() {
 		"execute a service on the Railgun Server with the given input",
 		"execute a service on the Railgun Server with the given input",
 		"/services/{name}/exec.{ext}",
+		[]string{"name"},
 		core.JobType)
 	servicesCmd.AddCommand(serviceExecCmd)
 	initFlags(serviceExecCmd, core.JobType)
@@ -494,6 +515,7 @@ func initRestCommands(parentCmd *cobra.Command, baseurl string, singular string,
 		fmt.Sprintf("add %s to Railgun Server", singular),
 		fmt.Sprintf("add %s to Railgun Server", singular),
 		baseurl+".{ext}",
+		[]string{},
 		inputType)
 	initFlags(addCmd, inputType)
 
@@ -505,6 +527,15 @@ func initRestCommands(parentCmd *cobra.Command, baseurl string, singular string,
 		"GET",
 		[]string{"name"})
 	getCmd.Flags().String("name", "", fmt.Sprintf("name of %s on Railgun Server", singular))
+
+	updateCmd := newPostCommand(
+		"update",
+		fmt.Sprintf("update %s on Railgun Server", singular),
+		fmt.Sprintf("update %s on Railgun Server", singular),
+		baseurl+"/{name}.{ext}",
+		[]string{"name"},
+		inputType)
+	initFlags(updateCmd, inputType)
 
 	deleteCmd := newRestCommand(
 		"delete",
@@ -523,7 +554,7 @@ func initRestCommands(parentCmd *cobra.Command, baseurl string, singular string,
 		"GET",
 		[]string{})
 
-	parentCmd.AddCommand(addCmd, getCmd, deleteCmd, listCmd)
+	parentCmd.AddCommand(addCmd, getCmd, updateCmd, deleteCmd, listCmd)
 
 }
 

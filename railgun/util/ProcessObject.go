@@ -7,43 +7,37 @@
 
 package util
 
+/*
 import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+
+	"github.com/spatialcurrent/railgun/railgun/config"
 )
 
-func ProcessObject(inputBytes []byte, inputFormat string, inputHeader []string, inputComment string, inputLazyQuotes bool, inputLimit int, dflExpression string, dflVars map[string]interface{}, dflUri string, verbose bool) (interface{}, error) {
+func ProcessObject(inputBytes []byte, inputConfig *config.Input, dflExpression string, dflVars map[string]interface{}, dflUri string, verbose bool) (interface{}, error) {
 
-	funcs := dfl.NewFuntionMapWithDefaults()
-
-	dflNode, err := ParseDfl(dflUri, dflExpression)
+	dflNode, err := inputConfig.Dfl.Node()
 	if err != nil {
 		return "", errors.Wrap(err, "error parsing")
 	}
 
-	if verbose && dflNode != nil {
-		dflNodeAsYaml, err := gss.SerializeString(dflNode.Map(), "yaml", []string{}, 0)
-		if err != nil {
-			return "", errors.Wrap(err, "error dumping dflNode as yaml to stdout")
-		}
-		fmt.Println(dflNodeAsYaml)
-		fmt.Println(dflNode.Dfl(dfl.DefaultQuotes, true, 0))
-	}
-
-	inputType, err := gss.GetType(inputBytes, inputFormat)
+	inputType, err := gss.GetType(inputBytes, inputConfig.Format)
 	if err != nil {
 		return "", errors.Wrap(err, "error getting type for input")
 	}
 
-	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, inputType, verbose)
+	options := inputConfig.Options()
+	options.Type = inputType
+	inputObject, err := options.DeserializeBytes(inputBytes, verbose)
 	if err != nil {
-		return "", errors.Wrap(err, "error deserializing input using format "+inputFormat)
+		return "", errors.Wrap(err, "error deserializing input using format "+inputConfig.Format)
 	}
 
 	if dflNode != nil {
-		_, outputObject, err := dflNode.Evaluate(dflVars, inputObject, funcs, []string{"'", "\"", "`"})
+		_, outputObject, err := dflNode.Evaluate(dflVars, inputObject, dfl.DefaultFunctionMap, []string{"'", "\"", "`"})
 		if err != nil {
 			return "", errors.Wrap(err, "error evaluating filter")
 		}
@@ -53,3 +47,4 @@ func ProcessObject(inputBytes []byte, inputFormat string, inputHeader []string, 
 	return inputObject, nil
 
 }
+*/

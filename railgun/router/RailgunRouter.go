@@ -130,9 +130,9 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 
 	r.AddWorkflowExecHandler("workflow_exec", "/workflows/{name}/exec.{ext}")
 
-	r.AddTileHandler("tile", "/layers/{name}/data/tiles/{z}/{x}/{y}.{ext}")
+	r.AddLayerTileHandler("tile", "/layers/{name}/tiles/data/{z}/{x}/{y}.{ext}")
 
-	r.AddMaskHandler("mask", "/layers/{name}/mask/tiles/{z}/{x}/{y}.{ext}")
+	r.AddLayerMaskHandler("mask", "/layers/{name}/tiles/mask/{z}/{x}/{y}.{ext}")
 
 	return r
 }
@@ -170,7 +170,7 @@ func (r *RailgunRouter) AddGroupHandler(name string, path string, t reflect.Type
 }
 
 func (r *RailgunRouter) AddItemHandler(name string, path string, t reflect.Type, singular string, plural string) {
-	r.Methods("GET", "DELETE").Name(name).Path(path).Handler(&handlers.ItemHandler{
+	r.Methods("GET", "POST", "OPTIONS", "DELETE").Name(name).Path(path).Handler(&handlers.ItemHandler{
 		Singular:    singular,
 		Plural:      plural,
 		Type:        t,
@@ -205,6 +205,7 @@ func (r *RailgunRouter) AddHomeHandler(name string, path string) {
 func (r *RailgunRouter) AddServiceExecHandler(name string, path string) {
 	r.Methods("POST", "OPTIONS").Name(name).Path(path).Handler(&handlers.ServiceExecHandler{
 		BaseHandler: r.NewBaseHandler(),
+		Cache:       gocache.New(5*time.Minute, 10*time.Minute),
 	})
 }
 
@@ -220,14 +221,14 @@ func (r *RailgunRouter) AddWorkflowExecHandler(name string, path string) {
 	})
 }
 
-func (r *RailgunRouter) AddTileHandler(name string, path string) {
-	r.Methods("GET").Name(name).Path(path).Handler(&handlers.TileHandler{
+func (r *RailgunRouter) AddLayerTileHandler(name string, path string) {
+	r.Methods("GET").Name(name).Path(path).Handler(&handlers.LayerTileHandler{
 		BaseHandler: r.NewBaseHandler(),
 	})
 }
 
-func (r *RailgunRouter) AddMaskHandler(name string, path string) {
-	r.Methods("GET").Name(name).Path(path).Handler(&handlers.MaskHandler{
+func (r *RailgunRouter) AddLayerMaskHandler(name string, path string) {
+	r.Methods("GET").Name(name).Path(path).Handler(&handlers.LayerMaskHandler{
 		BaseHandler: r.NewBaseHandler(),
 	})
 }

@@ -8,14 +8,19 @@
 package handlers
 
 import (
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"reflect"
+	"strings"
+)
+
+import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	"net/http"
-	"reflect"
-	"strings"
 )
 
 type ItemHandler struct {
@@ -33,6 +38,26 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		h.Catalog.Lock()
 		obj, err := h.Get(w, r, format)
+		h.Catalog.Unlock()
+		if err != nil {
+			h.Messages <- err
+			err = h.RespondWithError(w, err, format)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			err = h.RespondWithObject(w, http.StatusOK, obj, format)
+			if err != nil {
+				h.Messages <- err
+				err = h.RespondWithError(w, err, format)
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
+	case "POST":
+		h.Catalog.Lock()
+		obj, err := h.Post(w, r, format)
 		h.Catalog.Unlock()
 		if err != nil {
 			h.Messages <- err
@@ -86,15 +111,90 @@ func (h *ItemHandler) Get(w http.ResponseWriter, r *http.Request, format string)
 	if !ok {
 		return make([]byte, 0), &rerrors.ErrMissingRequiredParameter{Name: "name"}
 	}
-	ws, ok := h.Catalog.GetItem(name, h.Type)
+	item, ok := h.Catalog.GetItem(name, h.Type)
 	if !ok {
 		return make([]byte, 0), &rerrors.ErrMissingObject{Type: h.Singular, Name: name}
 	}
 	obj := map[string]interface{}{
 		"success": true,
-		"item":    ws.Map(),
+		"item":    item.Map(),
 	}
 	return obj, nil
+}
+
+func (h *ItemHandler) Post(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
+
+	authorization, err := h.GetAuthorization(r)
+	if err != nil {
+		return nil, err
+	}
+
+	claims, err := h.ParseAuthorization(authorization)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not verify authorization")
+	}
+
+	if claims.Subject != "root" {
+		return nil, errors.New("not authorized")
+	}
+
+	vars := mux.Vars(r)
+	name, ok := vars["name"]
+	if !ok {
+		return nil, errors.Wrap(&rerrors.ErrMissingRequiredParameter{Name: "name"}, "error updating "+h.Singular)
+	}
+
+	_, ok = h.Catalog.GetItem(name, h.Type)
+	if !ok {
+		return nil, errors.Wrap(&rerrors.ErrMissingObject{Type: h.Singular, Name: name}, "error updating "+h.Singular)
+	}
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading from request body")
+	}
+
+	obj, err := h.ParseBody(body, format)
+	if err != nil {
+		return nil, err
+	}
+
+	item, err := h.Catalog.ParseItem(obj, h.Type)
+	if err != nil {
+		return nil, err
+	}
+
+	if item.GetName() != name {
+		return nil, errors.New(fmt.Sprintf("the old name %s does not match the new name %s", name, item.GetName()))
+	}
+
+	err = h.Catalog.Update(item)
+	if err != nil {
+		return nil, errors.Wrap(err, "error updating "+h.Singular)
+	}
+
+	catalogUri := h.Viper.GetString("catalog-uri")
+	if len(catalogUri) > 0 {
+
+		var s3_client *s3.S3
+		if strings.HasPrefix(catalogUri, "s3://") {
+			client, err := h.GetAWSS3Client()
+			if err != nil {
+				return nil, errors.Wrap(err, "error connecting to AWS")
+			}
+			s3_client = client
+		}
+
+		err = h.Catalog.SaveToUri(catalogUri, s3_client)
+		if err != nil {
+			return nil, errors.Wrap(err, "error saving config")
+		}
+	}
+
+	data := map[string]interface{}{}
+	data["success"] = true
+	data["message"] = h.Singular + " with name " + name + " updated."
+	return data, nil
 }
 
 func (h *ItemHandler) Delete(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {

@@ -8,9 +8,15 @@
 package handlers
 
 import (
-	//"fmt"
+	"io/ioutil"
+	"net/http"
+	"strings"
+)
+
+import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
+	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
@@ -19,14 +25,11 @@ import (
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/parser"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	"io/ioutil"
-	"net/http"
-	"strings"
-	//"reflect"
 )
 
 type ServiceExecHandler struct {
 	*BaseHandler
+	Cache *gocache.Cache
 }
 
 func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -80,10 +83,23 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 	}
 
 	variables := map[string]interface{}{}
+
+	// Load variables from cache
+	if cacheVariables, found := h.Cache.Get(serviceName + "/variables"); found {
+		if m, ok := cacheVariables.(map[string]interface{}); ok {
+			h.Messages <- "variables found in cache " + serviceName + "/variables"
+			for k, v := range m {
+				variables[k] = v
+			}
+		}
+	}
+
+	// Load default variable values from service definition
 	for k, v := range service.Defaults {
 		variables[k] = v
 	}
 
+	// Load variables from request body
 	if len(body) > 0 {
 		obj, err := h.ParseBody(body, format)
 		if err != nil {
@@ -131,15 +147,19 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, errors.Wrap(err, "error getting type for input")
 	}
 
-	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoLimit, inputType, false)
+	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
 	}
 
-	_, outputObject, err := service.Process.Node.Evaluate(variables, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	variables, outputObject, err := service.Process.Node.Evaluate(variables, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
 	}
+
+	// Set the variables to the cache every time to bump the expiration
+	h.Cache.Set(serviceName+"/variables", variables, gocache.DefaultExpiration)
+
 	return outputObject, nil
 
 }

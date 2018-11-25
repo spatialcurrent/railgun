@@ -64,7 +64,7 @@ func (c *Cache) Get(uri string, format string, compression string, bufferSize in
 		return false, nil, errors.Wrap(err, "error getting type for input")
 	}
 
-	obj, err := gss.DeserializeBytes(inputByte, format, []string{}, "", false, gss.NoLimit, inputType, verbose)
+	obj, err := gss.DeserializeBytes(inputByte, format, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, verbose)
 	if err != nil {
 		return false, nil, errors.Wrap(err, "error deserializing input using format "+format)
 	}

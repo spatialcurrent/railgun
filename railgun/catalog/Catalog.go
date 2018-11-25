@@ -80,7 +80,23 @@ func (c *Catalog) Add(obj interface{}) error {
 	}
 
 	return nil
+}
 
+func (c *Catalog) Update(obj interface{}) error {
+	objectType := reflect.TypeOf(obj)
+	typeName := objectType.Elem().Name()
+	if n, ok := obj.(core.Named); ok {
+		if index, ok := c.indices[typeName]; ok {
+			if position, ok := index[n.GetName()]; ok {
+				if objects, ok := c.objects[typeName]; ok {
+					reflect.ValueOf(objects).Index(position).Set(reflect.ValueOf(obj))
+					return nil
+				}
+			}
+		}
+		return &rerrors.ErrMissingObject{Type: typeName, Name: n.GetName()}
+	}
+	return &rerrors.ErrMissingObject{Type: typeName, Name: "unknown"}
 }
 
 func (c *Catalog) Delete(name string, t reflect.Type) error {

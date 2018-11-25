@@ -4,11 +4,17 @@ echo "******************"
 echo "Formatting $DIR/../railgun"
 cd $DIR/../railgun
 go fmt
+echo "Formatting $DIR/../railgun/athenaiterator"
+cd $DIR/../railgun/athenaiterator
+go fmt
 echo "Formatting $DIR/../railgun/catalog"
 cd $DIR/../railgun/catalog
 go fmt
 echo "Formatting $DIR/../railgun/cli"
 cd $DIR/../railgun/cli
+go fmt
+echo "Formatting $DIR/../railgun/config"
+cd $DIR/../railgun/config
 go fmt
 echo "Formatting $DIR/../railgun/core"
 cd $DIR/../railgun/core
@@ -25,11 +31,17 @@ go fmt
 echo "Formatting $DIR/../railgun/img"
 cd $DIR/../railgun/img
 go fmt
+echo "Formatting $DIR/../railgun/logger"
+cd $DIR/../railgun/logger
+go fmt
 echo "Formatting $DIR/../railgun/named"
 cd $DIR/../railgun/named
 go fmt
 echo "Formatting $DIR/../railgun/parser"
 cd $DIR/../railgun/parser
+go fmt
+echo "Formatting $DIR/../railgun/pipeline"
+cd $DIR/../railgun/pipeline
 go fmt
 echo "Formatting $DIR/../railgun/request"
 cd $DIR/../railgun/request

@@ -13,6 +13,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
@@ -31,6 +33,9 @@ import (
 )
 
 import (
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/athena"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
@@ -38,7 +43,10 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	//rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/athenaiterator"
+	"github.com/spatialcurrent/railgun/railgun/config"
+	"github.com/spatialcurrent/railgun/railgun/logger"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -47,27 +55,28 @@ var GO_RAILGUN_DEFAULT_SALT = "4F56C8C88B38CD8CD96BF8A9724F4BFE"
 
 var processViper = viper.New()
 
-func processOutput(content string, outputUri string, outputCompression string, outputAppend bool, outputPassphrase string, outputSalt string, s3_client *s3.S3) error {
-	if outputUri == "stdout" {
-		if len(outputPassphrase) > 0 {
+//outputUri string, outputCompression string, outputAppend bool, outputPassphrase string, outputSalt string,
+func processOutput(content string, output *config.Output, s3_client *s3.S3) error {
+	if output.Uri == "stdout" {
+		if output.IsEncrypted() {
 			return errors.New("encryption only works with file output")
 		}
 		fmt.Println(content)
-	} else if outputUri == "stderr" {
-		if len(outputPassphrase) > 0 {
+	} else if output.Uri == "stderr" {
+		if output.IsEncrypted() {
 			return errors.New("encryption only works with file output")
 		}
 		fmt.Fprintf(os.Stderr, content)
 	} else {
 
-		outputWriter, err := grw.WriteToResource(outputUri, outputCompression, outputAppend, s3_client)
+		outputWriter, err := grw.WriteToResource(output.Uri, output.Compression, output.Append, s3_client)
 		if err != nil {
 			return errors.Wrap(err, "error opening output file")
 		}
 
-		if len(outputPassphrase) > 0 {
+		if output.IsEncrypted() {
 
-			outputBlock, err := util.CreateCipher(outputSalt, outputPassphrase)
+			outputBlock, err := util.CreateCipher(output.Salt, output.Passphrase)
 			if err != nil {
 				return errors.New("error creating cipher for output passphrase")
 			}
@@ -87,7 +96,7 @@ func processOutput(content string, outputUri string, outputCompression string, o
 			}
 
 		} else {
-			_, err = outputWriter.WriteString(content + "\n")
+			_, err = outputWriter.WriteLine(content)
 			if err != nil {
 				return errors.Wrap(err, "error writing string to output file")
 			}
@@ -102,12 +111,12 @@ func processOutput(content string, outputUri string, outputCompression string, o
 	return nil
 }
 
-func processObject(object interface{}, node dfl.Node, vars map[string]interface{}, funcs dfl.FunctionMap) (interface{}, error) {
+func processObject(object interface{}, node dfl.Node, vars map[string]interface{}) (interface{}, error) {
 	if node != nil {
 		_, o, err := node.Evaluate(
 			vars,
 			object,
-			funcs,
+			dfl.DefaultFunctionMap,
 			[]string{"'", "\"", "`"})
 		if err != nil {
 			return "", errors.Wrap(err, "error evaluating filter")
@@ -117,29 +126,12 @@ func processObject(object interface{}, node dfl.Node, vars map[string]interface{
 	return object, nil
 }
 
-func handleErrors(errorsChannel chan error) {
-	go func() {
-		for err := range errorsChannel {
-			fmt.Fprintf(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-	}()
-}
-
-func handleMessages(messages chan string, wg *sync.WaitGroup) {
-	go func() {
-		for message := range messages {
-			fmt.Println(message)
-		}
-		wg.Done()
-	}()
-}
-
 func buildOptions(inputLine []byte, inputFormat string, inputHeader []string, inputComment string, inputLazyQuotes bool) (gss.Options, error) {
 	options := gss.Options{
 		Header:     inputHeader,
 		Comment:    inputComment,
 		LazyQuotes: inputLazyQuotes,
+		SkipLines:  0,
 		Limit:      1,
 	}
 
@@ -161,17 +153,17 @@ func buildOptions(inputLine []byte, inputFormat string, inputHeader []string, in
 	return options, errors.New("invalid input format for handleInput " + inputFormat)
 }
 
-func handleInput(inputLines chan []byte, inputFormat string, inputHeader []string, inputComment string, inputLazyQuotes bool, node dfl.Node, vars map[string]interface{}, funcs dfl.FunctionMap, outputObjects chan interface{}, outputFormat string, errorsChannel chan error, verbose bool) error {
+func handleInput(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, outputFormat string, errorsChannel chan error, verbose bool) error {
 
 	go func() {
 
 		for inputLine := range inputLines {
 			options, err := buildOptions(
 				inputLine,
-				inputFormat,
-				inputHeader,
-				inputComment,
-				inputLazyQuotes)
+				input.Format,
+				input.Header,
+				input.Comment,
+				input.LazyQuotes)
 			if err != nil {
 				errorsChannel <- errors.Wrap(err, "invalid options for input line "+string(inputLine))
 				continue
@@ -181,7 +173,7 @@ func handleInput(inputLines chan []byte, inputFormat string, inputHeader []strin
 				errorsChannel <- errors.Wrap(err, "error deserializing input using options "+fmt.Sprint(options))
 				continue
 			}
-			outputObject, err := processObject(inputObject, node, vars, funcs)
+			outputObject, err := processObject(inputObject, node, vars)
 			if err != nil {
 				switch err.(type) {
 				case *gss.ErrEmptyRow:
@@ -201,12 +193,12 @@ func handleInput(inputLines chan []byte, inputFormat string, inputHeader []strin
 	return nil
 }
 
-func handleOutput(outputUri string, format string, compression string, buffer bool, header []string, outputAppend bool, mkdirs bool, outputVars map[string]interface{}, funcs dfl.FunctionMap, objects chan interface{}, errorsChannel chan error, messages chan string, fileDescriptorLimit int, wg *sync.WaitGroup, s3_client *s3.S3, verbose bool) error {
+func handleOutput(output *config.Output, outputVars map[string]interface{}, objects chan interface{}, errorsChannel chan error, messages chan interface{}, fileDescriptorLimit int, wg *sync.WaitGroup, s3_client *s3.S3, verbose bool) error {
 
-	if outputUri == "stdout" {
+	if output.Uri == "stdout" {
 		go func() {
 			for object := range objects {
-				line, err := formatObject(object, format, header)
+				line, err := formatObject(object, output.Format, output.Header)
 				if err != nil {
 					errorsChannel <- errors.Wrap(err, "error formatting object")
 					break
@@ -219,10 +211,10 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 		return nil
 	}
 
-	if outputUri == "stderr" {
+	if output.Uri == "stderr" {
 		go func() {
 			for object := range objects {
-				line, err := formatObject(object, format, header)
+				line, err := formatObject(object, output.Format, output.Header)
 				if err != nil {
 					errorsChannel <- errors.Wrap(err, "error formatting object")
 					break
@@ -236,7 +228,7 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 		return nil
 	}
 
-	n, err := dfl.ParseCompile(outputUri)
+	n, err := dfl.ParseCompile(output.Uri)
 	if err != nil {
 		return errors.Wrap(err, "Error parsing dfl node.")
 	}
@@ -269,10 +261,10 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 		return outputPathSemaphores[outputPathString]
 	}
 
-	writeToOutputMemoryBuffer := func(outputPathString string, str string) {
+	writeToOutputMemoryBuffer := func(outputPathString string, line string) {
 		outputBufferMutex.Lock()
 		if _, ok := outputPathBuffers[outputPathString]; !ok {
-			outputWriter, outputBuffer, err := grw.WriteBytes(compression)
+			outputWriter, outputBuffer, err := grw.WriteBytes(output.Compression)
 			if err != nil {
 				panic(err)
 			}
@@ -281,7 +273,7 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 				Buffer *bytes.Buffer
 			}{Writer: outputWriter, Buffer: outputBuffer}
 		}
-		_, err := outputPathBuffers[outputPathString].Writer.WriteString(str)
+		_, err := outputPathBuffers[outputPathString].Writer.WriteLine(line)
 		if err != nil {
 			panic(err)
 		}
@@ -303,14 +295,14 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 				outputFileDescriptorSemaphore <- struct{}{}
 				outputPathSemaphore <- struct{}{}
 
-				if buffer {
-					writeToOutputMemoryBuffer(line.Path, line.Line+"\n")
+				if output.BufferMemory {
+					writeToOutputMemoryBuffer(line.Path, line.Line)
 				} else {
-					if mkdirs {
+					if output.Mkdirs {
 						os.MkdirAll(filepath.Dir(line.Path), 0755)
 					}
 
-					outputWriter, err := grw.WriteToResource(line.Path, compression, true, s3_client)
+					outputWriter, err := grw.WriteToResource(line.Path, output.Compression, true, s3_client)
 					if err != nil {
 						<-outputPathSemaphore
 						<-outputFileDescriptorSemaphore
@@ -318,7 +310,7 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 						return
 					}
 
-					_, err = outputWriter.WriteString(line.Line + "\n")
+					_, err = outputWriter.WriteLine(line.Line)
 					if err != nil {
 						errorsChannel <- errors.Wrap(err, "Error writing string to output file")
 					}
@@ -346,10 +338,10 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 			if err != nil {
 				messages <- "* error closing output buffer for " + outputPath
 			}
-			if mkdirs {
+			if output.Mkdirs {
 				os.MkdirAll(filepath.Dir(outputPath), 0755)
 			}
-			outputWriter, err := grw.WriteToResource(outputPath, "", outputAppend, s3_client)
+			outputWriter, err := grw.WriteToResource(outputPath, "", output.Append, s3_client)
 			if err != nil {
 				messages <- "* error opening output file at " + outputPath
 			}
@@ -375,7 +367,7 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 
 	go func() {
 		for object := range objects {
-			outputPath, err := processObject(object, outputNode, outputVars, funcs)
+			outputPath, err := processObject(object, outputNode, outputVars)
 			if err != nil {
 				errorsChannel <- errors.Wrap(err, "Error writing string to output file")
 				break
@@ -392,7 +384,7 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 				break
 			}
 
-			line, err := formatObject(object, format, header)
+			line, err := formatObject(object, output.Format, output.Header)
 			if err != nil {
 				errorsChannel <- errors.Wrap(err, "error formatting object")
 				break
@@ -415,17 +407,113 @@ func handleOutput(outputUri string, format string, compression string, buffer bo
 
 func formatObject(object interface{}, format string, header []string) (string, error) {
 	if format == "jsonl" {
-		str, err := gss.SerializeString(object, "json", header, -1)
+		str, err := gss.SerializeString(object, "json", header, gss.NoLimit)
 		if err != nil {
 			return "", errors.Wrap(err, "error serializing object")
 		}
 		return str, nil
 	}
-	str, err := gss.SerializeString(object, format, header, -1)
+	str, err := gss.SerializeString(object, format, header, gss.NoLimit)
 	if err != nil {
 		return "", errors.Wrap(err, "error serializing object")
 	}
 	return str, nil
+}
+
+func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputFormat string, athenaClient *athena.Athena, logger *logger.Logger, verbose bool) (interface{}, error) {
+
+	if !strings.HasPrefix(tempUri, "s3://") {
+		return nil, errors.New("temporary uri must be an S3 object")
+	}
+
+	_, queryName := grw.SplitUri(inputUri)
+	getNamedQueryOutput, err := athenaClient.GetNamedQuery(&athena.GetNamedQueryInput{
+		NamedQueryId: aws.String(queryName),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting named athena query")
+	}
+	startQueryExecutionOutput, err := athenaClient.StartQueryExecution(&athena.StartQueryExecutionInput{
+		QueryExecutionContext: &athena.QueryExecutionContext{
+			Database: getNamedQueryOutput.NamedQuery.Database,
+		},
+		QueryString: getNamedQueryOutput.NamedQuery.QueryString,
+		ResultConfiguration: &athena.ResultConfiguration{
+			OutputLocation: aws.String(tempUri),
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "error starting athena query")
+	}
+	queryExecutionId := startQueryExecutionOutput.QueryExecutionId
+
+	if verbose {
+		logger.Info(fmt.Sprintf("* waiting for athena query %s to complete", *startQueryExecutionOutput.QueryExecutionId))
+	}
+
+	queryExecutionState := ""
+	queryExecutionStateReason := ""
+	for i := 0; i < 36; i++ {
+		getQueryExecutionOutput, err := athenaClient.GetQueryExecution(&athena.GetQueryExecutionInput{
+			QueryExecutionId: queryExecutionId,
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "error waiting on athena query")
+		}
+		queryExecutionState = *getQueryExecutionOutput.QueryExecution.Status.State
+		if getQueryExecutionOutput.QueryExecution.Status.StateChangeReason != nil {
+			queryExecutionStateReason = *getQueryExecutionOutput.QueryExecution.Status.StateChangeReason
+		}
+		wait := true
+		switch queryExecutionState {
+		case "QUEUED":
+		case "RUNNING":
+		case "FAILED", "SUCCEEDED", "CANCELLED":
+			wait = false
+		}
+		if !wait {
+			break
+		}
+		if verbose {
+			logger.Info("* sleeping for 5 seconds")
+			logger.Flush()
+		}
+		time.Sleep(5 * time.Second)
+	}
+
+	switch queryExecutionState {
+	case "QUEUED":
+	case "RUNNING":
+	case "FAILED", "SUCCEEDED", "CANCELLED":
+		logger.Info(fmt.Sprintf("* athena query result: %s: %s", queryExecutionState, queryExecutionStateReason))
+	}
+
+	if len(outputFormat) == 0 {
+		return nil, nil // just exit if no output-format is given
+	}
+
+	athenaIterator, err := athenaiterator.New(athenaClient, queryExecutionId, inputLimit)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating athena iterator")
+	}
+	outputObjects := make([]map[string]interface{}, 0)
+	for {
+		line, err := athenaIterator.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				return nil, errors.Wrap(err, "error from athena iterator")
+			}
+		}
+		object := map[string]interface{}{}
+		err = json.Unmarshal(line, &object)
+		if err != nil {
+			return nil, errors.Wrap(err, "error unmarshalling value from athena results: "+string(line))
+		}
+		outputObjects = append(outputObjects, object)
+	}
+	return outputObjects, nil
 }
 
 func processFunction(cmd *cobra.Command, args []string) {
@@ -442,9 +530,9 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 	if verbose {
 		fmt.Println("=================================================")
-		fmt.Println("Configuration:")
+		fmt.Println("Viper:")
 		fmt.Println("-------------------------------------------------")
-		str, err := gss.SerializeString(v.AllSettings(), "properties", []string{}, -1)
+		str, err := gss.SerializeString(v.AllSettings(), "properties", []string{}, gss.NoLimit)
 		if err != nil {
 			fmt.Println("error getting all settings")
 			os.Exit(1)
@@ -454,296 +542,207 @@ func processFunction(cmd *cobra.Command, args []string) {
 	}
 
 	fileDescriptorLimit := v.GetInt("file-descriptor-limit")
-
 	stream := v.GetBool("stream")
 
-	// AWS Flags
-	awsDefaultRegion := v.GetString("aws-default-region")
-	awsAccessKeyId := v.GetString("aws-access-key-id")
-	awsSecretAccessKey := v.GetString("aws-secret-access-key")
-	awsSessionToken := v.GetString("aws-session-token")
+	processConfig := &config.Process{
+		AWS:              &config.AWS{},
+		Input:            &config.Input{},
+		Output:           &config.Output{},
+		Temp:             &config.Temp{},
+		Dfl:              &config.Dfl{},
+		ErrorDestination: "",
+		ErrorCompression: "",
+		LogDestination:   "",
+		LogCompression:   "",
+	}
+	config.LoadConfigFromViper(processConfig, v)
 
-	// Input Flags
-	inputUri := v.GetString("input-uri")
-	inputFormat := v.GetString("input-format")
-	inputHeader := v.GetStringSlice("input-header")
-	inputComment := v.GetString("input-comment")
-	inputLazyQuotes := v.GetBool("input-lazy-quotes")
-	inputCompression := v.GetString("input-compression")
-	inputReaderBufferSize := v.GetInt("input-reader-buffer-size")
-	inputPassphrase := v.GetString("input-passphrase")
-	inputSalt := v.GetString("input-salt")
-	inputLimit := v.GetInt("input-limit")
+	if verbose {
+		fmt.Println("=================================================")
+		fmt.Println("Configuration:")
+		fmt.Println("-------------------------------------------------")
+		str, err := gss.SerializeString(processConfig.Map(), "yaml", gss.NoHeader, gss.NoLimit)
+		if err != nil {
+			fmt.Println("error getting all settings")
+			os.Exit(1)
+		}
+		fmt.Println(str)
+		fmt.Println("=================================================")
+	}
 
-	// Output Flags
-	outputUri := v.GetString("output-uri")
-	outputFormat := v.GetString("output-format")
-	outputHeader := v.GetStringSlice("output-header")
-	outputCompression := v.GetString("output-compression")
-	outputBufferMemory := v.GetBool("output-buffer-memory")
-	outputAppend := v.GetBool("output-append")
-	outputPassphrase := v.GetString("output-passphrase")
-	outputSalt := v.GetString("output-salt")
-	//outputLimit := v.GetInt("output-limit")
-	outputLimit := v.GetInt("output-limit")
-	outputMkdirs := v.GetBool("output-mkdirs")
-
-	// DFL Flgas
-	dflExpression := v.GetString("dfl-expression")
-	dflUri := v.GetString("dfl-uri")
-	dflVarsString := v.GetString("dfl-vars")
-
-	// Error Flags
-	errorDestination := v.GetString("error-destination")
-	errorCompression := v.GetString("error-compression")
-
-	// Logging Flags
-	logDestination := v.GetString("log-destination")
-	logCompression := v.GetString("log-compression")
-	//logFormat := v.GetString("log-format")
-
+	var athenaClient *athena.Athena
 	var s3_client *s3.S3
 
-	if strings.HasPrefix(inputUri, "s3://") || strings.HasPrefix(outputUri, "s3://") || strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(logDestination, "s3://") {
-		aws_session, err := util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
+	if processConfig.HasAWSResource() {
+		awsSession, err := session.NewSessionWithOptions(processConfig.AWSSessionOptions())
 		if err != nil {
 			fmt.Println(errors.Wrap(err, "error connecting to AWS"))
 			os.Exit(1)
 		}
-		s3_client = s3.New(aws_session)
-	}
 
-	errorWriter, err := grw.WriteToResource(errorDestination, errorCompression, true, s3_client)
-	if err != nil {
-		fmt.Println(errors.Wrap(err, "error creating error writer"))
-		os.Exit(1)
-	}
-
-	logWriter, err := grw.WriteToResource(logDestination, logCompression, true, s3_client)
-	if err != nil {
-		errorWriter.WriteString(errors.Wrap(err, "error creating log writer").Error())
-		errorWriter.Close()
-		os.Exit(1)
-	}
-
-	errorsChannel := make(chan error)
-	messages := make(chan interface{}, 1000)
-
-	go func(messages chan interface{}) {
-		for message := range messages {
-			logWriter.WriteString(fmt.Sprint(message) + "\n")
-			logWriter.Flush()
+		if processConfig.HasAthenaStoredQuery() {
+			athenaClient = athena.New(awsSession)
 		}
-	}(messages)
 
-	if errorDestination == logDestination {
+		if processConfig.HasS3Bucket() {
+			s3_client = s3.New(awsSession)
+		}
+	}
+
+	logger := logger.NewLoggerFromConfig(
+		processConfig.LogDestination,
+		processConfig.LogCompression,
+		processConfig.ErrorDestination,
+		processConfig.ErrorCompression,
+		s3_client)
+
+	errorsChannel := make(chan error, 1000)
+	messages := make(chan interface{}, 1000)
+	logger.ListenInfo(messages, nil)
+
+	if processConfig.ErrorDestination == processConfig.LogDestination {
 		go func(errorsChannel chan error) {
 			for err := range errorsChannel {
 				messages <- err.Error()
 			}
 		}(errorsChannel)
 	} else {
-		go func(errorsChannel chan error) {
-			for err := range errorsChannel {
-				switch rerr := err.(type) {
-				case *rerrors.ErrInvalidParameter:
-					errorWriter.WriteString(rerr.Error())
-				case *rerrors.ErrMissing:
-					errorWriter.WriteString(rerr.Error())
-				default:
-					errorWriter.WriteString(rerr.Error())
+		logger.ListenError(errorsChannel)
+	}
+
+	processConfig.Input.Init()
+
+	var inputReader grw.ByteReadCloser
+	if !processConfig.Input.IsAthenaStoredQuery() {
+		r, inputMetadata, err := grw.ReadFromResource(
+			processConfig.Input.Uri,
+			processConfig.Input.Compression,
+			processConfig.Input.ReaderBufferSize,
+			false,
+			s3_client)
+		if err != nil {
+			logger.Fatal(errors.Wrap(err, "error opening resource from uri "+processConfig.Input.Uri))
+		}
+		inputReader = r
+
+		processConfig.Output.Init()
+
+		if len(processConfig.Input.Format) == 0 {
+			if inputMetadata != nil {
+				if len(inputMetadata.ContentType) > 0 {
+					switch inputMetadata.ContentType {
+					case "application/json":
+						processConfig.Input.Format = "json"
+					case "application/vnd.geo+json":
+						processConfig.Input.Format = "json"
+					case "application/toml":
+						processConfig.Input.Format = "toml"
+					}
 				}
 			}
-		}(errorsChannel)
-	}
-
-	if len(inputFormat) == 0 || len(inputCompression) == 0 {
-		_, inputPath := grw.SplitUri(inputUri)
-		fmt.Println("Input Path:", inputPath)
-		_, inputFormatGuess, inputCompressionGuess := util.SplitNameFormatCompression(inputPath)
-
-		fmt.Println("inputFormatGuess:", inputFormatGuess)
-		fmt.Println("inputCompressionGuess:", inputCompressionGuess)
-
-		if len(inputFormat) == 0 {
-			inputFormat = inputFormatGuess
-		}
-		if len(inputCompression) == 0 {
-			inputCompression = inputCompressionGuess
-		}
-	}
-
-	fmt.Println("Input Uri:", inputUri)
-	fmt.Println("Input Compression:", inputCompression)
-
-	inputReader, inputMetadata, err := grw.ReadFromResource(inputUri, inputCompression, inputReaderBufferSize, false, s3_client)
-	if err != nil {
-		errorWriter.WriteError(errors.Wrap(err, "error opening resource from uri "+inputUri))
-		errorWriter.Close()
-		os.Exit(1)
-	}
-
-	if len(outputFormat) == 0 || len(outputCompression) == 0 {
-		_, outputPath := grw.SplitUri(outputUri)
-		_, outputFormatGuess, outputCompressionGuess := util.SplitNameFormatCompression(outputPath)
-		if len(outputFormat) == 0 {
-			outputFormat = outputFormatGuess
-		}
-		if len(outputCompression) == 0 {
-			outputCompression = outputCompressionGuess
-		}
-	}
-
-	if len(inputFormat) == 0 {
-		if inputMetadata != nil {
-			if len(inputMetadata.ContentType) > 0 {
-				switch inputMetadata.ContentType {
-				case "application/json":
-					inputFormat = "json"
-				case "application/vnd.geo+json":
-					inputFormat = "json"
-				case "application/toml":
-					inputFormat = "toml"
-				}
+			if len(processConfig.Input.Format) == 0 && len(processConfig.Output.Format) > 0 {
+				logger.Fatal("Error: Provided no --input-format and could not infer from resource.")
 			}
 		}
-		if len(inputFormat) == 0 && len(outputFormat) > 0 {
-			errorWriter.WriteString("Error: Provided no --input-format and could not infer from resource.")
-			errorWriter.Close()
-			os.Exit(1)
-		}
 	}
 
-	if len(inputFormat) > 0 && len(outputFormat) == 0 {
-		errorWriter.WriteString("Error: Provided input format but no output format.")
-		errorWriter.WriteString("Run \"railgun --help\" for more information.")
-		errorWriter.Close()
-		os.Exit(1)
+	if len(processConfig.Input.Format) > 0 && len(processConfig.Output.Format) == 0 {
+		logger.Fatal("Error: Provided input format but no output format.")
 	}
 
-	fmt.Println("Output Format:", outputFormat)
-	fmt.Println("Output Compression:", outputCompression)
+	//fmt.Println("Output Format:", outputFormat)
+	//fmt.Println("Output Compression:", outputCompression)
 
 	if stream {
 
-		if !(outputFormat == "csv" || outputFormat == "tsv" || outputFormat == "jsonl") {
-			errorWriter.WriteString("output format " + outputFormat + " is not compatible with streaming")
-			errorWriter.Close()
-			os.Exit(1)
+		if !(processConfig.Output.CanStream()) {
+			logger.Fatal("output format " + processConfig.Output.Format + " is not compatible with streaming")
 		}
 
-		if len(outputPassphrase) > 0 {
-			errorWriter.WriteString("output passphrase is not compatible with streaming because it uses a block cipher")
-			errorWriter.Close()
-			os.Exit(1)
+		if processConfig.Output.IsEncrypted() {
+			logger.Fatal("output passphrase is not compatible with streaming because it uses a block cipher")
 		}
 
 		// Stream Processing with Batch Input
-		if len(inputPassphrase) > 0 || !(outputFormat == "csv" || outputFormat == "tsv" || outputFormat == "jsonl") {
+		if processConfig.Input.IsAthenaStoredQuery() || processConfig.Input.IsEncrypted() || !(processConfig.Input.CanStream()) {
 
-			inputBytesEncrypted, err := inputReader.ReadAll()
-			if err != nil {
-				errorWriter.WriteString("error reading from resource")
-				errorWriter.Close()
-				os.Exit(1)
-			}
-
-			err = inputReader.Close()
-			if err != nil {
-				errorWriter.WriteString(errors.Wrap(err, "error closing input").Error())
-				errorWriter.Close()
-				os.Exit(1)
-			}
-
-			inputBytesPlain, err := util.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
-			if err != nil {
-				errorWriter.WriteString(errors.Wrap(err, "error decoding input").Error())
-				errorWriter.Close()
-				os.Exit(1)
-			}
-
-			inputType, err := gss.GetType(inputBytesPlain, inputFormat)
-			if err != nil {
-				errorWriter.WriteString(errors.Wrap(err, "error getting type for input").Error())
-				errorWriter.Close()
-				os.Exit(1)
-			}
-
-			if !(inputType.Kind() == reflect.Array || inputType.Kind() == reflect.Slice) {
-				errorWriter.WriteString("input type cannot be streamed as it is not an array or slice but " + fmt.Sprint(inputType))
-				errorWriter.Close()
-				os.Exit(1)
-			}
-
-			inputObject, err := gss.DeserializeBytes(inputBytesPlain, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, inputType, verbose)
-			if err != nil {
-				errorWriter.WriteError(errors.Wrap(err, "error deserializing input using format "+inputFormat))
-				errorWriter.Close()
-				os.Exit(1)
-			}
-
-			dflNode, err := util.ParseDfl(dflUri, dflExpression)
-			if err != nil {
-				errorWriter.WriteError(errors.Wrap(err, "error parsing"))
-				errorWriter.Close()
-				os.Exit(1)
-			}
-			funcs := dfl.NewFuntionMapWithDefaults()
-
-			dflVars := map[string]interface{}{}
-			if len(dflVarsString) > 0 {
-				_, dflVarsMap, err := dfl.ParseCompileEvaluateMap(
-					dflVarsString,
-					map[string]interface{}{},
-					map[string]interface{}{},
-					funcs,
-					dfl.DefaultQuotes)
+			var inputObjects interface{}
+			if processConfig.Input.IsAthenaStoredQuery() {
+				objects, err := processAthenaInput(
+					processConfig.Input.Uri,
+					processConfig.Input.Limit,
+					processConfig.Temp.Uri,
+					processConfig.Output.Format,
+					athenaClient,
+					logger,
+					verbose)
 				if err != nil {
-					errorWriter.WriteError(errors.Wrap(err, "error parsing initial dfl vars as map"))
-					errorWriter.Close()
-					os.Exit(1)
+					logger.Fatal(errors.Wrap(err, "error processing athena input"))
 				}
-				if m, ok := gss.StringifyMapKeys(dflVarsMap).(map[string]interface{}); ok {
-					dflVars = m
+				inputObjects = objects
+			} else {
+
+				inputBytes, err := util.DecryptReader(inputReader, processConfig.Input.Passphrase, processConfig.Input.Salt)
+				if err != nil {
+					logger.Fatal(errors.Wrap(err, "error decoding input"))
 				}
+
+				inputType, err := gss.GetType(inputBytes, processConfig.Input.Format)
+				if err != nil {
+					logger.Fatal(errors.Wrap(err, "error getting type for input"))
+				}
+
+				if !(inputType.Kind() == reflect.Array || inputType.Kind() == reflect.Slice) {
+					logger.Fatal("input type cannot be streamed as it is not an array or slice but " + fmt.Sprint(inputType))
+				}
+
+				options := processConfig.InputOptions()
+				options.Type = inputType
+				objects, err := options.DeserializeBytes(inputBytes, verbose)
+				//objects, err := gss.DeserializeBytes(inputBytesPlain, inputConfig.Format, inputConfig.Header, inputConfig.Comment, inputConfig.LazyQuotes, inputConfig.SkipLines, inputConfig.Limit, inputType, verbose)
+				if err != nil {
+					logger.Fatal(errors.Wrap(err, "error deserializing input using format "+processConfig.Input.Format))
+				}
+				inputObjects = objects
+			}
+
+			dflNode, err := processConfig.Dfl.Node()
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error parsing"))
+			}
+
+			dflVars, err := processConfig.Dfl.Variables()
+			if err != nil {
+				logger.Fatal(err)
 			}
 
 			var wgObjects sync.WaitGroup
 			var wgMessages sync.WaitGroup
-			errorsChannel := make(chan error, 1000)
+			fatals := make(chan error, 1000)
 			outputObjects := make(chan interface{}, 1000)
-			messages := make(chan string, 1000)
+			//messages := make(chan interface, 1000)
 
 			wgObjects.Add(1)
 			wgMessages.Add(1)
-			handleErrors(errorsChannel)
-			handleMessages(messages, &wgMessages)
+			logger.ListenFatal(fatals)
+			logger.ListenInfo(messages, &wgMessages)
 			handleOutput(
-				outputUri,
-				outputFormat,
-				outputCompression,
-				outputBufferMemory,
-				outputHeader,
-				outputAppend,
-				outputMkdirs,
+				processConfig.Output,
 				dflVars,
-				funcs,
 				outputObjects,
-				errorsChannel,
+				fatals,
 				messages,
 				fileDescriptorLimit,
 				&wgObjects,
 				s3_client,
 				verbose)
 
-			inputObjectValue := reflect.ValueOf(inputObject)
-			inputObjectLength := inputObjectValue.Len()
-			for i := 0; i < inputObjectLength; i++ {
-				output, err := processObject(inputObjectValue.Index(i).Interface(), dflNode, dflVars, funcs)
+			inputObjectsValue := reflect.ValueOf(inputObjects)
+			inputObjectsLength := inputObjectsValue.Len()
+			for i := 0; i < inputObjectsLength; i++ {
+				output, err := processObject(inputObjectsValue.Index(i).Interface(), dflNode, dflVars)
 				if err != nil {
-					errorWriter.WriteString(errors.Wrap(err, "error processing object").Error())
-					errorWriter.Close()
-					os.Exit(1)
+					logger.Fatal(errors.Wrap(err, "error processing object"))
 				}
 				switch output.(type) {
 				case dfl.Null:
@@ -754,100 +753,68 @@ func processFunction(cmd *cobra.Command, args []string) {
 			close(outputObjects)
 			wgObjects.Wait()
 			wgMessages.Wait()
-			logWriter.Close()
+			logger.Close()
 			return
 		}
 
-		dflNode, err := util.ParseDfl(dflUri, dflExpression)
+		//dflNode, err := util.ParseDfl(dflUri, dflExpression)
+		dflNode, err := processConfig.Dfl.Node()
 		if err != nil {
-			errorWriter.WriteString(errors.Wrap(err, "error parsing").Error())
-			errorWriter.Close()
-			os.Exit(1)
-		}
-		funcs := dfl.NewFuntionMapWithDefaults()
-
-		dflVars := map[string]interface{}{}
-		if len(dflVarsString) > 0 {
-			_, dflVarsMap, err := dfl.ParseCompileEvaluateMap(
-				dflVarsString,
-				map[string]interface{}{},
-				map[string]interface{}{},
-				funcs,
-				dfl.DefaultQuotes)
-			if err != nil {
-				errorWriter.WriteError(errors.Wrap(err, "error parsing initial dfl vars as map"))
-				errorWriter.Close()
-				os.Exit(1)
-			}
-			if m, ok := gss.StringifyMapKeys(dflVarsMap).(map[string]interface{}); ok {
-				dflVars = m
-			}
+			logger.Fatal(errors.Wrap(err, "error parsing"))
 		}
 
-		if len(inputHeader) == 0 && (inputFormat == "csv" || inputFormat == "tsv") {
+		dflVars, err := processConfig.Dfl.Variables()
+		if err != nil {
+			logger.Fatal(err)
+		}
+
+		if len(processConfig.Input.Header) == 0 && (processConfig.Input.Format == "csv" || processConfig.Input.Format == "tsv") {
 			inputBytes, err := inputReader.ReadBytes('\n')
 			if err != nil {
-				errorWriter.WriteString("error reading header from resource")
-				errorWriter.Close()
-				os.Exit(1)
+				logger.Fatal(errors.Wrap(err, "error reading header from resource"))
 			}
 			csvReader := csv.NewReader(bytes.NewReader(inputBytes))
-			if inputFormat == "tsv" {
+			if processConfig.Input.Format == "tsv" {
 				csvReader.Comma = '\t'
 			}
-			csvReader.LazyQuotes = inputLazyQuotes
-			if len(inputComment) > 1 {
-				errorWriter.WriteString("go's encoding/csv package only supports single character comment characters")
-				errorWriter.Close()
-				os.Exit(1)
-			} else if len(inputComment) == 1 {
-				csvReader.Comment = []rune(inputComment)[0]
+			csvReader.LazyQuotes = processConfig.Input.LazyQuotes
+			if len(processConfig.Input.Comment) > 1 {
+				logger.Fatal("go's encoding/csv package only supports single character comment characters")
+			} else if len(processConfig.Input.Comment) == 1 {
+				csvReader.Comment = []rune(processConfig.Input.Comment)[0]
 			}
 			h, err := csvReader.Read()
 			if err != nil {
 				if err != io.EOF {
-					errorWriter.WriteString(errors.Wrap(err, "Error reading header from input with format csv").Error())
-					errorWriter.Close()
-					os.Exit(1)
+					logger.Fatal(errors.Wrap(err, "Error reading header from input with format csv"))
 				}
 			}
-			inputHeader = h
+			processConfig.Input.Header = h
 		}
 
 		var wgObjects sync.WaitGroup
 		var wgMessages sync.WaitGroup
 		errorsChannel := make(chan error, 1000)
-		messages := make(chan string, 1000)
+		messages := make(chan interface{}, 1000)
 		inputLines := make(chan []byte, 1000)
 		outputObjects := make(chan interface{}, 1000)
 
 		wgObjects.Add(1)
 		wgMessages.Add(1)
-		handleErrors(errorsChannel)
-		handleMessages(messages, &wgMessages)
+		logger.ListenFatal(errorsChannel)
+		logger.ListenInfo(messages, &wgMessages)
 		handleInput(
 			inputLines,
-			inputFormat,
-			inputHeader,
-			inputComment,
-			inputLazyQuotes,
+			processConfig.Input,
 			dflNode,
 			dflVars,
-			funcs,
 			outputObjects,
-			outputFormat,
+			processConfig.Output.Format,
 			errorsChannel,
 			verbose)
 		handleOutput(
-			outputUri,
-			outputFormat,
-			outputCompression,
-			outputBufferMemory,
-			outputHeader,
-			outputAppend,
-			outputMkdirs,
+			processConfig.Output,
 			dflVars,
-			funcs,
 			outputObjects,
 			errorsChannel,
 			messages,
@@ -863,14 +830,12 @@ func processFunction(cmd *cobra.Command, args []string) {
 				if err == io.EOF {
 					break
 				} else {
-					errorWriter.WriteString("error reading line from resource")
-					errorWriter.Close()
-					os.Exit(1)
+					logger.Fatal("error reading line from resource")
 				}
 			}
 			inputLines <- inputBytes
 			inputCount += 1
-			if inputLimit > 0 && inputCount >= inputLimit {
+			if processConfig.Input.Limit > 0 && inputCount >= processConfig.Input.Limit {
 				break
 			}
 		}
@@ -881,69 +846,101 @@ func processFunction(cmd *cobra.Command, args []string) {
 		close(inputLines)
 		wgObjects.Wait()
 		wgMessages.Wait()
-		logWriter.Close()
+		logger.Close()
 		return
 
 	}
 
 	// Batch Processing
 
-	funcs := dfl.NewFuntionMapWithDefaults()
+	outputString := ""
+	if processConfig.Input.IsAthenaStoredQuery() {
 
-	dflVars := map[string]interface{}{}
-	if len(dflVarsString) > 0 {
-		_, dflVarsMap, err := dfl.ParseCompileEvaluateMap(
-			dflVarsString,
-			map[string]interface{}{},
-			map[string]interface{}{},
-			funcs,
-			dfl.DefaultQuotes)
+		outputObjects, err := processAthenaInput(
+			processConfig.Input.Uri,
+			processConfig.Input.Limit,
+			processConfig.Temp.Uri,
+			processConfig.Output.Format,
+			athenaClient,
+			logger, verbose)
 		if err != nil {
-			errorWriter.WriteError(errors.Wrap(err, "error parsing initial dfl vars as map"))
-			errorWriter.Close()
-			os.Exit(1)
+			logger.Fatal(errors.Wrap(err, "error processing athena input"))
 		}
-		if m, ok := gss.StringifyMapKeys(dflVarsMap).(map[string]interface{}); ok {
-			dflVars = m
+
+		if len(processConfig.Output.Format) == 0 {
+			return // just exit if no output-format is given
+		}
+
+		str, err := gss.SerializeString(
+			outputObjects,
+			processConfig.Output.Format,
+			processConfig.Output.Header,
+			processConfig.Output.Limit)
+		if err != nil {
+			logger.Fatal(errors.Wrap(err, "error converting input"))
+		}
+
+		outputString = str
+
+	} else {
+
+		dflVars, err := processConfig.Dfl.Variables()
+		if err != nil {
+			logger.Fatal(err)
+		}
+
+		inputBytes, err := util.DecryptReader(inputReader, processConfig.Input.Passphrase, processConfig.Input.Salt)
+		if err != nil {
+			logger.Fatal(errors.Wrap(err, "error decrypting input"))
+		}
+
+		if len(processConfig.Output.Format) > 0 {
+
+			dflNode, err := processConfig.Dfl.Node()
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error parsing"))
+			}
+
+			inputType, err := gss.GetType(inputBytes, processConfig.Input.Format)
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error getting type for input"))
+			}
+
+			options := processConfig.Input.Options()
+			options.Type = inputType
+			inputObject, err := options.DeserializeBytes(inputBytes, verbose)
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error deserializing input using format "+processConfig.Input.Format))
+			}
+
+			var outputObject interface{}
+			if dflNode != nil {
+				_, filterObject, err := dflNode.Evaluate(dflVars, inputObject, dfl.DefaultFunctionMap, []string{"'", "\"", "`"})
+				if err != nil {
+					logger.Fatal(errors.Wrap(err, "error evaluating filter"))
+				}
+				outputObject = filterObject
+			} else {
+				outputObject = inputObject
+			}
+
+			str, err := processConfig.OutputOptions().SerializeString(gss.StringifyMapKeys(outputObject))
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error converting input"))
+			}
+
+			outputString = str
+
+		} else {
+			outputString = string(inputBytes)
 		}
 	}
 
-	inputBytesEncrypted, err := inputReader.ReadAll()
+	err := processOutput(outputString, processConfig.Output, s3_client)
 	if err != nil {
-		errorWriter.WriteString("error reading from resource")
-		errorWriter.Close()
-		os.Exit(1)
+		logger.Fatal(errors.Wrap(err, "error processing output"))
 	}
-
-	err = inputReader.Close()
-	if err != nil {
-		errorWriter.WriteString(errors.Wrap(err, "error closing input").Error())
-		errorWriter.Close()
-		os.Exit(1)
-	}
-
-	inputBytesPlain, err := util.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
-	if err != nil {
-		errorWriter.WriteString(errors.Wrap(err, "error decoding input").Error())
-		errorWriter.Close()
-		os.Exit(1)
-	}
-
-	outputString, err := util.ProcessInput(inputBytesPlain, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, dflExpression, dflVars, dflUri, outputFormat, outputHeader, outputLimit, verbose)
-	if err != nil {
-		errorWriter.WriteString(errors.Wrap(err, "error processing input").Error())
-		errorWriter.Close()
-		os.Exit(1)
-	}
-
-	err = processOutput(outputString, outputUri, outputCompression, outputAppend, outputPassphrase, outputSalt, s3_client)
-	if err != nil {
-		errorWriter.WriteString(errors.Wrap(err, "error processing output").Error())
-		errorWriter.Close()
-		os.Exit(1)
-	}
-
-	logWriter.Close()
+	logger.Close()
 
 }
 
@@ -965,14 +962,17 @@ func init() {
 	// Input Flags
 	processCmd.Flags().StringP("input-uri", "i", "stdin", "the input uri")
 	processCmd.Flags().StringP("input-compression", "", "", "the input compression: "+strings.Join(GO_RAILGUN_COMPRESSION_ALGORITHMS, ", "))
-	processCmd.Flags().StringP("input-format", "", "", "the input format: "+strings.Join(gss.Formats, ", "))
-	processCmd.Flags().StringSliceP("input-header", "", []string{}, "the input header, if the stdin input has no header.")
+	processCmd.Flags().String("input-format", "", "the input format: "+strings.Join(gss.Formats, ", "))
+	processCmd.Flags().StringSlice("input-header", []string{}, "the input header, if the stdin input has no header.")
 	processCmd.Flags().StringP("input-comment", "c", "", "the comment character for the input, e.g, #")
-	processCmd.Flags().BoolP("input-lazy-quotes", "", false, "allows lazy quotes for CSV and TSV")
-	processCmd.Flags().StringP("input-passphrase", "", "", "input passphrase for AES-256 encryption")
-	processCmd.Flags().StringP("input-salt", "", GO_RAILGUN_DEFAULT_SALT, "input salt for AES-256 encryption")
-	processCmd.Flags().IntP("input-reader-buffer-size", "", 4096, "the buffer size for the input reader")
-	processCmd.Flags().IntP("input-limit", "", -1, "maximum number of objects to read from input")
+	processCmd.Flags().Bool("input-lazy-quotes", false, "allows lazy quotes for CSV and TSV")
+	processCmd.Flags().String("input-passphrase", "", "input passphrase for AES-256 encryption")
+	processCmd.Flags().String("input-salt", GO_RAILGUN_DEFAULT_SALT, "input salt for AES-256 encryption")
+	processCmd.Flags().Int("input-reader-buffer-size", 4096, "the buffer size for the input reader")
+	processCmd.Flags().Int("input-skip-lines", gss.NoSkip, "the number of lines to skip before processing")
+	processCmd.Flags().Int("input-limit", gss.NoLimit, "maximum number of objects to read from input")
+
+	processCmd.Flags().String("temp-uri", "", "the temporary uri for storing results")
 
 	// Output Flags
 	processCmd.Flags().StringP("output-uri", "o", "stdout", "the output uri (a dfl expression itself)")
@@ -981,10 +981,10 @@ func init() {
 	processCmd.Flags().StringSliceP("output-header", "", []string{}, "the output header")
 	processCmd.Flags().StringP("output-passphrase", "", "", "output passphrase for AES-256 encryption")
 	processCmd.Flags().StringP("output-salt", "", "", "output salt for AES-256 encryption")
-	processCmd.Flags().IntP("output-limit", "", -1, "maximum number of objects to send to output")
+	processCmd.Flags().IntP("output-limit", "", gss.NoLimit, "maximum number of objects to send to output")
 	processCmd.Flags().BoolP("output-append", "", false, "append to output files")
-	processCmd.Flags().BoolP("output-buffer-memory", "", false, "buffer output in memory")
-	processCmd.Flags().BoolP("output-mkdirs", "", false, "make directories if missing for output files")
+	processCmd.Flags().Bool("output-buffer-memory", false, "buffer output in memory")
+	processCmd.Flags().Bool("output-mkdirs", false, "make directories if missing for output files")
 
 	// DFL Flags
 	processCmd.Flags().StringP("dfl-expression", "", "", "DFL expression to use")

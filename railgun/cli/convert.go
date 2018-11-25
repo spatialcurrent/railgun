@@ -26,6 +26,7 @@ func convertFunction(cmd *cobra.Command, args []string) {
 	verbose := v.GetBool("verbose")
 	inputFormat := v.GetString("input-format")
 	inputHeader := v.GetStringArray("input-header")
+	inputSkipLines := v.GetInt("input-skip-lines")
 	inputLimit := v.GetInt("input-limit")
 	inputComment := v.GetString("input-comment")
 	inputLazyQuotes := v.GetBool("input-lazy-quotes")
@@ -39,7 +40,7 @@ func convertFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	outputString, err := gss.Convert(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputLimit, outputFormat, outputHeader, outputLimit, verbose)
+	outputString, err := gss.Convert(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, outputFormat, outputHeader, outputLimit, verbose)
 	if err != nil {
 		fmt.Println(errors.Wrap(err, "error converting"))
 		os.Exit(1)
@@ -62,13 +63,14 @@ func init() {
 	convertCmd.MarkFlagRequired("input-format")
 	convertCmd.Flags().StringP("input-comment", "c", "", "the input comment character, e.g., #.  Commented lines are not sent to output")
 	convertCmd.Flags().BoolP("input-lazy-quotes", "", false, "allows lazy quotes for CSV and TSV")
-	convertCmd.Flags().StringSliceP("input-header", "", []string{}, "the input header, if the input has no header")
-	convertCmd.Flags().IntP("input-limit", "", -1, "maximum number of objects to read from input")
+	convertCmd.Flags().StringSliceP("input-header", "", gss.NoHeader, "the input header, if the input has no header")
+	convertCmd.Flags().Int("input-skip-lines", gss.NoSkip, "the number of input lines to skip before processing")
+	convertCmd.Flags().Int("input-limit", gss.NoLimit, "maximum number of objects to read from input")
 
 	convertCmd.Flags().StringP("output-format", "o", "", "the output format: "+strings.Join(gss.Formats, ", "))
 	convertCmd.MarkFlagRequired("output-format")
-	convertCmd.Flags().StringArrayP("output-header", "", []string{}, "the output header")
-	convertCmd.Flags().IntP("output-limit", "", -1, "maximum number of objects to send to output")
+	convertCmd.Flags().StringArray("output-header", gss.NoHeader, "the output header")
+	convertCmd.Flags().Int("output-limit", gss.NoLimit, "maximum number of objects to send to output")
 
 	// Bind to Viper
 	convertViper.BindPFlags(convertCmd.PersistentFlags())

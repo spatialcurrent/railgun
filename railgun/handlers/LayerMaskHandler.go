@@ -26,11 +26,11 @@ import (
 	"strings"
 )
 
-type MaskHandler struct {
+type LayerMaskHandler struct {
 	*BaseHandler
 }
 
-func (h *MaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *LayerMaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	qs := request.NewQueryString(r)
 	err := h.Run(w, r, vars, qs)
@@ -41,7 +41,7 @@ func (h *MaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *MaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs request.QueryString) error {
+func (h *LayerMaskHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs request.QueryString) error {
 
 	ext := vars["ext"]
 

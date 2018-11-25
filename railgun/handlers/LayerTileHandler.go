@@ -18,16 +18,17 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/geo"
-	"github.com/spatialcurrent/railgun/railgun/img"
-	"github.com/spatialcurrent/railgun/railgun/named"
+	//"github.com/spatialcurrent/railgun/railgun/img"
+	//"github.com/spatialcurrent/railgun/railgun/named"
+	"github.com/spatialcurrent/railgun/railgun/pipeline"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	"image/color"
+	//"image/color"
 	"net/http"
 	"strings"
 )
 
-var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[]}")
+var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[],\"numberOfFeatures\":0}")
 
 func respondWith404AndEmptyFeatureCollection(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNotFound)
@@ -43,28 +44,52 @@ func respondWithEmptyFeatureCollection(w http.ResponseWriter) {
 	w.Write(emptyFeatureCollection)
 }
 
-type TileHandler struct {
+type LayerTileHandler struct {
 	*BaseHandler
 }
 
-func (h *TileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	qs := request.NewQueryString(r)
-	err := h.Run(w, r, vars, qs)
-	if err != nil {
-		h.Errors <- err
-		w.WriteHeader(http.StatusInternalServerError)
-		img.RespondWithImage(vars["ext"], w, img.CreateImage(color.RGBA{255, 0, 0, 220}))
+func (h *LayerTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
+
+	switch r.Method {
+	case "GET":
+		h.Catalog.Lock()
+		obj, err := h.Get(w, r, format)
+		h.Catalog.Unlock()
+		if err != nil {
+			h.Messages <- err
+			err = h.RespondWithError(w, err, format)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			err = h.RespondWithObject(w, http.StatusOK, obj, format)
+			if err != nil {
+				h.Messages <- err
+				err = h.RespondWithError(w, err, format)
+				if err != nil {
+					panic(err)
+				}
+			}
+		}
+	default:
+		err := h.RespondWithNotImplemented(w, format)
+		if err != nil {
+			panic(err)
+		}
 	}
+
 }
 
-func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[string]string, qs request.QueryString) error {
+func (h *LayerTileHandler) Get(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
 
-	ext := vars["ext"]
+	vars := mux.Vars(r)
+	qs := request.NewQueryString(r)
 
 	layerName, ok := vars["name"]
 	if !ok {
-		return &rerrors.ErrMissingRequiredParameter{Name: "name"}
+		return nil, &rerrors.ErrMissingRequiredParameter{Name: "name"}
 	}
 
 	tileRequest := &request.TileRequest{Layer: layerName, Header: r.Header}
@@ -79,14 +104,12 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 
 	layer, ok := h.Catalog.GetLayer(layerName)
 	if !ok {
-		return &rerrors.ErrMissingObject{Type: "layer", Name: layerName}
+		return nil, &rerrors.ErrMissingObject{Type: "layer", Name: layerName}
 	}
-
-	_, outputFormat, _ := util.SplitNameFormatCompression(r.URL.Path)
 
 	tile, err := core.NewTileFromRequestVars(vars)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tileRequest.Tile = tile
 
@@ -99,8 +122,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		fmt.Println(minX, minY, maxX, maxY)
 		if tile.X < minX || tile.X > maxX || tile.Y < minY || tile.Y > maxY {
 			tileRequest.OutsideExtent = true
-			respondWithEmptyFeatureCollection(w)
-			return nil
+			return emptyFeatureCollection, nil
 		}
 	}
 
@@ -113,8 +135,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		fmt.Println(minX, minY, maxX, maxY)
 		if tile.X < minX || tile.X > maxX || tile.Y < minY || tile.Y > maxY {
 			tileRequest.OutsideExtent = true
-			respondWithEmptyFeatureCollection(w)
-			return nil
+			return emptyFeatureCollection, nil
 		}
 	}
 
@@ -122,7 +143,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	_, inputUriString, err := dfl.EvaluateString(layer.DataStore.Uri, map[string]interface{}{}, ctx, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		respondWithEmptyFeatureCollection(w)
-		return errors.Wrap(err, "error evaluating datastore uri with context "+fmt.Sprint(ctx))
+		return nil, errors.Wrap(err, "error evaluating datastore uri with context "+fmt.Sprint(ctx))
 	}
 
 	tileRequest.Source = inputUriString
@@ -133,51 +154,43 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		switch errors.Cause(err).(type) {
 		case *request.ErrQueryStringParameterMissing:
 		default:
-			return err
+			return nil, err
 		}
 	}
 
-	//bbox := geo.TileToBoundingBox(z, x, geo.FlipY(y, z, 256, geo.WebMercatorExtent, geo.WebMercatorResolutions))
-	//bbox := geo.TileToBoundingBox(z, x, y)
-	//bbox := tile.Bbox()
-
-	//fmt.Println("Bounding box:", bbox)
-
 	tileRequest.Bbox = tile.Bbox()
 
-	//g := "filter(@, '((@_tile_z == "+fmt.Sprint(z)+") and (@_tile_x == " + fmt.Sprint(x) + ") and (@_tile_y == " + fmt.Sprint(y) + ")) or ((@geometry?.coordinates != null) and (($c := @geometry.coordinates) | ($c[0] within " + fmt.Sprint(bbox[0]) + " and " + fmt.Sprint(bbox[2]) + ") and ($c[1] within " + fmt.Sprint(bbox[1]) + " and " + fmt.Sprint(bbox[3]) + ")))')"
-
-	/*g := "filter(@, '(@geometry?.coordinates != null) and (($c := @geometry.coordinates) | ($c[0] within " + fmt.Sprint(bbox[0]) + " and " + fmt.Sprint(bbox[2]) + ") and ($c[1] within " + fmt.Sprint(bbox[1]) + " and " + fmt.Sprint(bbox[3]) + "))')"
-
-	if len(exp) > 0 {
-		exp = g + " | " + exp
-	} else {
-		exp = g
-	}*/
-
-	pipeline := []dfl.Node{named.GeometryFilter}
+	p := pipeline.New().FilterBoundingBox()
 
 	exp, err := qs.FirstString("dfl")
 	if err != nil {
 		switch errors.Cause(err).(type) {
 		case *request.ErrQueryStringParameterMissing:
 		default:
-			return err
+			return nil, err
 		}
 	}
 
-	if len(exp) > 0 {
-		_, _, err := dfl.Parse(exp)
-		if err != nil {
-			return errors.Wrap(err, "error processing filter expression "+exp)
+	if layer.Node != nil {
+		if len(exp) > 0 {
+			userFilterNode, err := dfl.ParseCompile(exp)
+			if err != nil {
+				return nil, errors.Wrap(err, "error processing user filter expression "+exp)
+			}
+			p = p.FilterCustom(dfl.And{&dfl.BinaryOperator{Left: layer.Node, Right: userFilterNode}})
+			tileRequest.Expression = exp
+		} else {
+			p = p.FilterCustom(layer.Node)
 		}
-
-		pipeline = append(pipeline, dfl.Function{Name: "filter", MultiOperator: &dfl.MultiOperator{Arguments: []dfl.Node{
-			dfl.Attribute{Name: ""},
-			dfl.Literal{Value: exp},
-		}}})
-
-		tileRequest.Expression = exp
+	} else {
+		if len(exp) > 0 {
+			userFilterNode, err := dfl.ParseCompile(exp)
+			if err != nil {
+				return nil, errors.Wrap(err, "error processing user filter expression "+exp)
+			}
+			p = p.FilterCustom(userFilterNode)
+			tileRequest.Expression = exp
+		}
 	}
 
 	limit, err := qs.FirstInt("limit")
@@ -185,15 +198,13 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		switch errors.Cause(err).(type) {
 		case *request.ErrQueryStringParameterMissing:
 		default:
-			return err
+			return nil, err
 		}
 	} else {
-		pipeline = append(pipeline, named.Limit)
+		p = p.Limit()
 	}
 
-	if ext == "geojson" || ext == "toml" {
-		pipeline = append(pipeline, named.GeoJSONLinesToGeoJSON)
-	}
+	p = p.GeoJSON()
 
 	// Input Flags
 	inputReaderBufferSize := h.Viper.GetInt("input-reader-buffer-size")
@@ -206,7 +217,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 	if strings.HasPrefix(inputUriString, "s3://") {
 		client, err := h.GetAWSS3Client()
 		if err != nil {
-			return errors.Wrap(err, "error connecting to AWS")
+			return nil, errors.Wrap(err, "error connecting to AWS")
 		}
 		s3_client = client
 	}
@@ -221,7 +232,7 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		s3_client,
 		verbose)
 	if err != nil {
-		return errors.Wrap(err, "error getting data from cache for tile "+tile.String())
+		return nil, errors.Wrap(err, "error getting data from cache for tile "+tile.String())
 	}
 	cacheRequest.Hit = hit
 
@@ -232,22 +243,22 @@ func (h *TileHandler) Run(w http.ResponseWriter, r *http.Request, vars map[strin
 		geo.TileToLatitude(tile.Y-buffer, tile.Z),
 	}
 
-	_, outputObject, err := dfl.Pipeline{Nodes: pipeline}.Evaluate(
-		map[string]interface{}{"bbox": bufferedBoundingBox, "limit": limit},
-		inputObject,
-		dfl.DefaultFunctionMap,
-		dfl.DefaultQuotes)
+	variables := map[string]interface{}{}
+	for k, v := range layer.Defaults {
+		variables[k] = v
+	}
+	variables["bbox"] = bufferedBoundingBox
+	variables["limit"] = limit
+
+	outputObject, err := p.Evaluate(
+		variables,
+		inputObject)
 	if err != nil {
-		return errors.Wrap(err, "error processing features")
+		return nil, errors.Wrap(err, "error processing features")
 	}
 
 	tileRequest.Features = gtg.TryGetInt(outputObject, "numberOfFeatures", 0)
 
-	outputBytes, err := gss.SerializeBytes(gss.StringifyMapKeys(outputObject), outputFormat, []string{}, gss.NoLimit)
-	if err != nil {
-		return errors.Wrap(err, "error converting output")
-	}
-	w.Write(outputBytes)
+	return gss.StringifyMapKeys(outputObject), nil
 
-	return nil
 }

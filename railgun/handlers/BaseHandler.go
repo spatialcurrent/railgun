@@ -135,7 +135,7 @@ func (h *BaseHandler) ParseBody(inputBytes []byte, format string) (interface{}, 
 
 	fmt.Println("Bytes:", string(inputBytes))
 
-	inputObject, err := gss.DeserializeBytes(inputBytes, format, []string{}, "", false, gss.NoLimit, inputType, false)
+	inputObject, err := gss.DeserializeBytes(inputBytes, format, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing body")
 	}

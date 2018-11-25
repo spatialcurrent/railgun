@@ -128,7 +128,7 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 			continue
 		}
 
-		inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, []string{}, "", false, gss.NoLimit, inputType, false)
+		inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, false)
 		if err != nil {
 			errorWriter.WriteError(errors.Wrap(err, "error deserializing input using format "+inputFormat))
 			exitCodes[job.Name] = 1

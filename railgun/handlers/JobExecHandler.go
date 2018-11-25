@@ -99,7 +99,7 @@ func (h *JobExecHandler) Post(w http.ResponseWriter, r *http.Request, format str
 		return nil, errors.Wrap(err, "error getting type for input")
 	}
 
-	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, []string{}, "", false, gss.NoLimit, inputType, false)
+	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
 	}

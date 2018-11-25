@@ -14,26 +14,22 @@ import (
 )
 
 func ConnectToAWS(awsAccessKeyId string, awsSecretAccessKey string, awsSessionToken string, awsRegion string) (*session.Session, error) {
-  
-  // https://docs.aws.amazon.com/sdk-for-go/api/aws/#Config
-  config := aws.Config{
-		MaxRetries:  aws.Int(3),
-		Region:      aws.String(awsRegion),
+
+	// https://docs.aws.amazon.com/sdk-for-go/api/aws/#Config
+	config := aws.Config{
+		MaxRetries: aws.Int(3),
+		Region:     aws.String(awsRegion),
 	}
-	
-  // The credentials object to use when signing requests. Defaults to a
-  // chain of credential providers to search for credentials in environment
-  // variables, shared credential file, and EC2 Instance Roles.
+
+	// The credentials object to use when signing requests. Defaults to a
+	// chain of credential providers to search for credentials in environment
+	// variables, shared credential file, and EC2 Instance Roles.
 	if len(awsAccessKeyId) > 0 && len(awsSecretAccessKey) > 0 {
-	  config.Credentials = credentials.NewStaticCredentials(
-	    awsAccessKeyId,
-	    awsSecretAccessKey,
-	    awsSessionToken)
+		config.Credentials = credentials.NewStaticCredentials(
+			awsAccessKeyId,
+			awsSecretAccessKey,
+			awsSessionToken)
 	}
-	
-	options := session.Options{
-		Config: config,
-	}
-  
-	return session.NewSessionWithOptions(options)
+
+	return session.NewSessionWithOptions(session.Options{Config: config})
 }

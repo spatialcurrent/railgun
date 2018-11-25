@@ -151,27 +151,23 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		}
 	}
 
-	inputBytesEncrypted, err := inputReader.ReadAll()
-	if err != nil {
-		return errors.New("error reading from resource")
-	}
-
-	inputStringPlain, err := util.DecryptInput(inputBytesEncrypted, inputPassphrase, inputSalt)
+	inputBytes, err := util.DecryptReader(inputReader, inputPassphrase, inputSalt)
 	if err != nil {
 		return errors.Wrap(err, "error decoding input")
 	}
 
-	outputType, err := gss.GetType(inputStringPlain, inputFormat)
+	outputType, err := gss.GetType(inputBytes, inputFormat)
 	if err != nil {
 		return errors.Wrap(err, "error decoding input")
 	}
 
 	inputObject, err := gss.DeserializeBytes(
-		inputStringPlain,
+		inputBytes,
 		inputFormat,
 		gss.NoHeader,
 		"",
 		false,
+		gss.NoSkip,
 		gss.NoLimit,
 		outputType,
 		false)

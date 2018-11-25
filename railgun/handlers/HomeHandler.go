@@ -82,7 +82,7 @@ func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
             maskLayer.getSource().refresh();
             
             let vectorUrl = createVectorUrl(
-              "amenities",
+              "medical",
               document.getElementById("dfl").value,
               url.searchParams.get("limit"));
             
@@ -111,7 +111,7 @@ func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
           
           
           var createVectorUrl = function(layerName, dfl, limit) {
-            var vectorUrl = "/layers/"+layerName+"/data/tiles/{z}/{x}/{y}.geojson";
+            var vectorUrl = "/layers/"+layerName+"/tiles/data/{z}/{x}/{y}.geojson";
             var qs = {"buffer": "1"};
             if (dfl != undefined && dfl.length > 0 ) {
               qs.dfl = encodeURI(dfl);
@@ -171,7 +171,7 @@ func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
             url.searchParams.get("dfl"));
           
           var vectorUrl = createVectorUrl(
-            "amenities",
+            "medical",
             url.searchParams.get("dfl"),
             url.searchParams.get("limit"));
             
@@ -198,8 +198,8 @@ func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
             }
           });
           
-          var layers = [baseLayer, maskLayer, vectorLayer];
-          //var layers = [baseLayer, vectorLayer];
+          //var layers = [baseLayer, maskLayer, vectorLayer];
+          var layers = [baseLayer, vectorLayer];
           //var layers = [baseLayer, maskLayer];
           
           var map = new ol.Map({

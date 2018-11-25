@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func DecryptInput(input []byte, passphrase string, salt string) ([]byte, error) {
+func DecryptBytes(input []byte, passphrase string, salt string) ([]byte, error) {
 
 	if len(passphrase) > 0 {
 		block, err := CreateCipher(salt, passphrase)

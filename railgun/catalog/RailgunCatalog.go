@@ -137,13 +137,32 @@ func (c *RailgunCatalog) ParseLayer(obj interface{}) (*core.Layer, error) {
 	if err != nil {
 		return &core.Layer{}, err
 	}
+	defaults, err := parser.ParseMap(obj, "defaults")
+	if err != nil {
+		return &core.Layer{}, err
+	}
+	tags, err := parser.ParseStringArray(obj, "tags")
+	if err != nil {
+		return &core.Layer{}, err
+	}
 	lyr := &core.Layer{
 		Name:        name,
 		Title:       coalesce(title, name),
 		Description: coalesce(description, title, name),
 		DataStore:   datastore,
+		Node:        nil,
+		Defaults:    defaults,
 		Extent:      extent,
+		Tags:        tags,
 		Cache:       cache.NewCache(),
+	}
+	expression := gtg.TryGetString(obj, "expression", "")
+	if len(expression) > 0 {
+		node, err := dfl.ParseCompile(expression)
+		if err != nil {
+			return &core.Layer{}, errors.Wrap(err, "error parsing process expression")
+		}
+		lyr.Node = node
 	}
 	return lyr, nil
 }
@@ -275,7 +294,7 @@ func (c *RailgunCatalog) ParseWorkflow(obj interface{}) (*core.Workflow, error) 
 	return wf, nil
 }
 
-func (c *RailgunCatalog) ParseItem(obj interface{}, t reflect.Type) (interface{}, error) {
+func (c *RailgunCatalog) ParseItem(obj interface{}, t reflect.Type) (core.Base, error) {
 	switch t {
 	case core.WorkspaceType:
 		return c.ParseWorkspace(obj)
@@ -546,7 +565,7 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 			return nil, err
 		}
 
-		inputObject, err := gss.DeserializeBytes(inputBytes, format, gss.NoHeader, "", false, gss.NoLimit, inputType, false)
+		inputObject, err := gss.DeserializeBytes(inputBytes, format, gss.NoHeader, "", false, gss.NoSkip, gss.NoLimit, inputType, false)
 		if err != nil {
 			return nil, err
 		}

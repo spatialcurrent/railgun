@@ -460,7 +460,7 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 				},
 			},
 		},
-		"/layers/{name}/data/tiles/{z}/{x}/{y}.{ext}": swagger.Path{
+		"/layers/{name}/tiles/data/{z}/{x}/{y}.{ext}": swagger.Path{
 			Get: swagger.Operation{
 				Description: "Get GeoJSON tile of features filtered by a DFL expression.",
 				Tags:        []string{"Layers"},
@@ -497,7 +497,7 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 				},
 			},
 		},
-		"/layers/{name}/mask/tiles/{z}/{x}/{y}.{ext}": swagger.Path{
+		"/layers/{name}/tiles/mask/{z}/{x}/{y}.{ext}": swagger.Path{
 			Get: swagger.Operation{
 				Description: "Get mask tile of features filtered by a DFL expression.",
 				Tags:        []string{"Layers"},
