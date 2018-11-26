@@ -63,23 +63,25 @@ func (c *Catalog) Add(obj interface{}) error {
 	objectType := reflect.TypeOf(obj)
 	typeName := objectType.Elem().Name()
 
-	if _, ok := c.objects[typeName]; !ok {
-		c.objects[typeName] = reflect.MakeSlice(reflect.SliceOf(objectType), 0, 0).Interface()
-	}
-
-	c.objects[typeName] = reflect.Append(reflect.ValueOf(c.objects[typeName]), reflect.ValueOf(obj)).Interface()
-
 	if n, ok := obj.(core.Named); ok {
+
 		if _, ok := c.indices[typeName]; !ok {
 			c.indices[typeName] = map[string]int{}
+		} else {
+			if _, ok := c.indices[typeName][n.GetName()]; ok {
+				return &rerrors.ErrAlreadyExists{Name: typeName, Value: n.GetName()}
+			}
 		}
-		if _, ok := c.indices[typeName][n.GetName()]; ok {
-			return &rerrors.ErrAlreadyExists{Name: typeName, Value: n.GetName()}
+
+		if _, ok := c.objects[typeName]; !ok {
+			c.objects[typeName] = reflect.MakeSlice(reflect.SliceOf(objectType), 0, 0).Interface()
 		}
+
+		c.objects[typeName] = reflect.Append(reflect.ValueOf(c.objects[typeName]), reflect.ValueOf(obj)).Interface()
 		c.indices[typeName][n.GetName()] = reflect.ValueOf(c.objects[typeName]).Len() - 1
 	}
 
-	return nil
+	return &rerrors.ErrMissingMethod{Type: typeName, Method: "GetName() string"}
 }
 
 func (c *Catalog) Update(obj interface{}) error {

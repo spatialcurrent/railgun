@@ -192,13 +192,13 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 				inputUri,
 				lastModified[fmt.Sprintf("s3://%s/%s", bucket, key)].UnixNano())
 
-			fmt.Println("* checking cache with key\n:", cacheKeyDataStore)
+			//fmt.Println("* checking cache with key\n:", cacheKeyDataStore)
 
 			if object, found := h.Cache.Get(cacheKeyDataStore); found {
-				fmt.Println("* cache hit for datastore with key:\n" + cacheKeyDataStore)
+				//fmt.Println("* cache hit for datastore with key:\n" + cacheKeyDataStore)
 				inputObjects = append(inputObjects, object)
 			} else {
-				fmt.Println("* cache miss for datastore with key:\n" + cacheKeyDataStore)
+				//fmt.Println("* cache miss for datastore with key:\n" + cacheKeyDataStore)
 				inputObjects = append(inputObjects, nil)
 			}
 
@@ -222,7 +222,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 			lastModified[inputUri].UnixNano())
 
 		if object, found := h.Cache.Get(cacheKeyDataStore); found {
-			fmt.Println("cache hit for datastore with key " + cacheKeyDataStore)
+			//fmt.Println("cache hit for datastore with key " + cacheKeyDataStore)
 			inputObjects = append(inputObjects, object)
 		} else {
 			inputReader, err := grw.ReadFromFile(inputFile, service.DataStore.Compression, false, 4096)
@@ -261,7 +261,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 					inputBytes = b
 				}
 
-				fmt.Println("* read all data for " + inputUri)
+				//fmt.Println("* read all data for " + inputUri)
 
 				inputFormat := service.DataStore.Format
 
@@ -270,7 +270,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 					return errors.Wrap(err, "error getting type for input")
 				}
 
-				fmt.Println("* deserializing data for " + inputUri)
+				//fmt.Println("* deserializing data for " + inputUri)
 
 				object, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false)
 				if err != nil {
@@ -298,7 +298,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, errors.Wrap(err, "error fetching data")
 	}
 
-	fmt.Println("* aggregating")
+	//fmt.Println("* aggregating")
 
 	// Aggregate data into 1 slice
 	inputSlice := reflect.ValueOf(make([]interface{}, 0))
@@ -313,21 +313,21 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		}
 	}
 
-	fmt.Println("* evaluating")
+	//fmt.Println("* evaluating")
 
 	variables, outputObject, err := service.Process.Node.Evaluate(variables, inputSlice.Interface(), dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
 	}
 
-	fmt.Println("* saving variables")
+	//fmt.Println("* saving variables")
 
 	// Set the variables to the cache every time to bump the expiration
 	h.Cache.Set(cacheKeyService, &variables, gocache.DefaultExpiration)
 
-	fmt.Println("* variables saved")
+	//fmt.Println("* variables saved")
 
-	fmt.Println("Output Object: ", outputObject)
+	//fmt.Println("Output Object: ", outputObject)
 
 	return outputObject, nil
 
