@@ -656,6 +656,7 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 					obj, err := c.ParseProcess(m)
 					if err != nil {
 						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading process"))
+						errorWriter.WriteError(err)
 						continue
 					}
 					c.Add(obj)

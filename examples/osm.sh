@@ -1,7 +1,11 @@
 #!/bin/bash
 
 #DATASTORE_URI="s3://$RAILGUN_BUCKET/workspace/osm/datastore/amenities/amenities.geojsonl.gz"
-DATASTORE_URI="~/Downloads/dc_amenities.geojsonl"
+#DATASTORE_URI="s3://$RAILGUN_BUCKET/workspace/osm/datastore/amenities/tiles/*.geojsonl.gz"
+DATASTORE_URI="s3://$RAILGUN_BUCKET/tiles/osm/pois/8/8-*.geojsonl.gz"
+#DATASTORE_URI="~/Downloads/dc_amenities.geojsonl"
+
+
 
 #if [[ -z "${RAILGUN_BUCKET}" ]]; then
 #  echo "Requires RAILGUN_BUCKET environment variable to be defined"
@@ -134,28 +138,28 @@ go run cmd/railgun/main.go client processes add \
 --title Cuisine \
 --description 'Filter a list of GeoJSON features by cuisines' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.cuisine ilike $cuisine) or ((@properties?.name != null) and ($cuisine iin split(@properties.name,` `)))") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.cuisine ilike $cuisine) or ((@properties?.name != null) and ($cuisine iin split(@properties.name,` `)))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name medical \
 --title Medical Services \
 --description 'Filter a list of GeoJSON features for medical services' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity in [clinic,doctors,hospital])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity in [clinic,doctors,hospital])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name crafts \
 --title Crafts \
 --description 'Filter a list of GeoJSON features by crafts.' \
 --tags '[geojson]' \
---expression 'filter(@, "((@properties?.craft != null) and (@properties?.craft iin $crafts)) or ((@properties?.name != null) and (intersects($crafts , set(split(lower(@properties.name),` `)))))") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "((@properties?.craft != null) and (@properties?.craft iin $crafts)) or ((@properties?.name != null) and (intersects($crafts , set(split(lower(@properties.name),` `)))))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name cuisines \
 --title Cuisines \
 --description 'Filter a list of GeoJSON features by cuisines' \
 --tags '[geojson]' \
---expression 'filter(@, "((@properties?.cuisine != null) and (@properties?.cuisine iin $cuisines)) or ((@properties?.amenity != embassy) and (@properties?.name != null) and (intersects($cuisines , set(split(lower(@properties.name),` `)))))") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "((@properties?.cuisine != null) and (@properties?.cuisine iin $cuisines)) or ((@properties?.amenity != embassy) and (@properties?.name != null) and (intersects($cuisines , set(split(lower(@properties.name),` `)))))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name gas_stations \
@@ -176,56 +180,56 @@ go run cmd/railgun/main.go client processes add \
 --title Lodging \
 --description 'Filter a list of GeoJSON features for lodging, e.g., hotels, motels, etc.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.tourism != null) and (@properties.tourism iin [hotel, motel])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.tourism != null) and (@properties.tourism iin [hotel, motel])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name airports \
 --title Airports \
 --description 'Filter a list of GeoJSON features for airports.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.aeroway != null) and (@properties.aeroway iin [aerodrome])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.aeroway != null) and (@properties.aeroway iin [aerodrome])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name helipads \
 --title Helipads \
 --description 'Filter a list of GeoJSON features for helipads.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.aeroway != null) and (@properties.aeroway iin [helipad, heliport])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.aeroway != null) and (@properties.aeroway iin [helipad, heliport])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name ice_skating \
 --title Ice Skating \
 --description 'Filter a list of GeoJSON features for locations for ice skating.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.leisure != null) and (@properties.leisure iin [ice_rink])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.leisure != null) and (@properties.leisure iin [ice_rink])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name workout \
 --title Workout \
 --description 'Filter a list of GeoJSON features for locations for working out.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity iin [fitness_center, gym])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity iin [fitness_center, gym])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name cafes \
 --title Cafes \
 --description 'Filter a list of GeoJSON features for cafes.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity iin [cafe])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity iin [cafe])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name post_offices \
 --title Post Offices \
 --description 'Filter a list of GeoJSON features for post offices.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity in [post_office])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity in [post_office])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name parks \
 --title Parks \
 --description 'Filter a list of GeoJSON features for parks.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.leisure != null) and (@properties.leisure iin [park])") | (($limit > 0) ? limit(@, $limit) : @) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "(@properties?.leisure != null) and (@properties.leisure iin [park])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client services add \
 --name amenities_extent \
@@ -397,6 +401,15 @@ go run cmd/railgun/main.go client services add \
 --defaults '{cuisines:{burrito, taco, mexican}, limit: -1}'
 
 go run cmd/railgun/main.go client services add \
+--name chinese_food_geojson \
+--title 'Chinese Food' \
+--description 'Find Chinese food' \
+--tags '[cuisine, geojson]' \
+--datastore amenities \
+--process cuisines \
+--defaults '{cuisines:{chinese}, limit: -1}'
+
+go run cmd/railgun/main.go client services add \
 --name ethiopian_food_geojson \
 --title 'Ethiopian Food' \
 --description 'Find Ethiopian food' \
@@ -406,6 +419,15 @@ go run cmd/railgun/main.go client services add \
 --defaults '{cuisines:{ethiopian}, limit: -1}'
 
 go run cmd/railgun/main.go client services add \
+--name vietnamese_food_geojson \
+--title 'Vietnamese Food' \
+--description 'Find Vietnamese food' \
+--tags '[cuisine, geojson]' \
+--datastore amenities \
+--process cuisines \
+--defaults '{cuisines:{vietnamese}, limit: -1}'
+
+go run cmd/railgun/main.go client services add \
 --name breweries_geojson \
 --title 'Breweries' \
 --description 'Find breweries' \
@@ -413,6 +435,15 @@ go run cmd/railgun/main.go client services add \
 --datastore amenities \
 --process crafts \
 --defaults '{crafts:{brewery}, limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name distilleries_geojson \
+--title 'Distilleries' \
+--description 'Find distilleries' \
+--tags '[craft, liquor, geojson]' \
+--datastore amenities \
+--process distilleries \
+--defaults '{crafts:{distillery}, limit: -1}'
 
 go run cmd/railgun/main.go client services add \
 --name post_offices_geojson \

@@ -62,5 +62,9 @@ func (p *Process) Map() map[string]interface{} {
 	if p.Dfl != nil {
 		m["Dfl"] = p.Dfl.Map()
 	}
+	m["ErrorDestination"] = p.ErrorDestination
+	m["ErrorCompression"] = p.ErrorCompression
+	m["LogDestination"] = p.LogDestination
+	m["LogCompression"] = p.LogCompression
 	return m
 }

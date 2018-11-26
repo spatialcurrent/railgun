@@ -28,7 +28,7 @@ type Input struct {
 }
 
 func (i Input) CanStream() bool {
-	return i.Format == "csv" || i.Format == "tsv" || i.Format == "jsonl"
+	return i.IsAthenaStoredQuery() || i.Format == "csv" || i.Format == "tsv" || i.Format == "jsonl"
 }
 
 func (i Input) HasFormat() bool {

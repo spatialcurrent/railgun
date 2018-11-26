@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"io"
+	//"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -264,6 +265,7 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 	writeToOutputMemoryBuffer := func(outputPathString string, line string) {
 		outputBufferMutex.Lock()
 		if _, ok := outputPathBuffers[outputPathString]; !ok {
+			//outputWriter, outputBuffer, err := grw.WriteSnappyBytes(output.Compression)
 			outputWriter, outputBuffer, err := grw.WriteBytes(output.Compression)
 			if err != nil {
 				panic(err)
@@ -345,7 +347,9 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 			if err != nil {
 				messages <- "* error opening output file at " + outputPath
 			}
-			_, err = outputWriter.Write(outputBuffer.Buffer.Bytes())
+			//_, err = ioutil.Copy(outputWriter, snappy.NewReader(bytes.NewReader(outputBuffer.Buffer.Bytes())))
+			//_, err = outputWriter.Write(outputBuffer.Buffer.Bytes())
+			_, err = io.Copy(outputWriter, outputBuffer.Buffer)
 			if err != nil {
 				messages <- "* error writing buffer to output file at " + outputPath
 			}
@@ -353,6 +357,8 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 			if err != nil {
 				messages <- "* error closing output file at " + outputPath
 			}
+			// delete output buffer and writer, since done writing to file
+			delete(outputPathBuffers, outputPath)
 		}
 		messages <- "* closing file descriptor semaphore"
 		close(outputFileDescriptorSemaphore)
@@ -420,7 +426,7 @@ func formatObject(object interface{}, format string, header []string) (string, e
 	return str, nil
 }
 
-func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputFormat string, athenaClient *athena.Athena, logger *logger.Logger, verbose bool) (interface{}, error) {
+func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputFormat string, athenaClient *athena.Athena, logger *logger.Logger, verbose bool) (*athenaiterator.AthenaIterator, error) {
 
 	if !strings.HasPrefix(tempUri, "s3://") {
 		return nil, errors.New("temporary uri must be an S3 object")
@@ -496,24 +502,7 @@ func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputF
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating athena iterator")
 	}
-	outputObjects := make([]map[string]interface{}, 0)
-	for {
-		line, err := athenaIterator.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				return nil, errors.Wrap(err, "error from athena iterator")
-			}
-		}
-		object := map[string]interface{}{}
-		err = json.Unmarshal(line, &object)
-		if err != nil {
-			return nil, errors.Wrap(err, "error unmarshalling value from athena results: "+string(line))
-		}
-		outputObjects = append(outputObjects, object)
-	}
-	return outputObjects, nil
+	return athenaIterator, nil
 }
 
 func processFunction(cmd *cobra.Command, args []string) {
@@ -664,46 +653,27 @@ func processFunction(cmd *cobra.Command, args []string) {
 		}
 
 		// Stream Processing with Batch Input
-		if processConfig.Input.IsAthenaStoredQuery() || processConfig.Input.IsEncrypted() || !(processConfig.Input.CanStream()) {
+		if processConfig.Input.IsEncrypted() || !(processConfig.Input.CanStream()) {
 
-			var inputObjects interface{}
-			if processConfig.Input.IsAthenaStoredQuery() {
-				objects, err := processAthenaInput(
-					processConfig.Input.Uri,
-					processConfig.Input.Limit,
-					processConfig.Temp.Uri,
-					processConfig.Output.Format,
-					athenaClient,
-					logger,
-					verbose)
-				if err != nil {
-					logger.Fatal(errors.Wrap(err, "error processing athena input"))
-				}
-				inputObjects = objects
-			} else {
+			inputBytes, err := util.DecryptReader(inputReader, processConfig.Input.Passphrase, processConfig.Input.Salt)
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error decoding input"))
+			}
 
-				inputBytes, err := util.DecryptReader(inputReader, processConfig.Input.Passphrase, processConfig.Input.Salt)
-				if err != nil {
-					logger.Fatal(errors.Wrap(err, "error decoding input"))
-				}
+			inputType, err := gss.GetType(inputBytes, processConfig.Input.Format)
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error getting type for input"))
+			}
 
-				inputType, err := gss.GetType(inputBytes, processConfig.Input.Format)
-				if err != nil {
-					logger.Fatal(errors.Wrap(err, "error getting type for input"))
-				}
+			if !(inputType.Kind() == reflect.Array || inputType.Kind() == reflect.Slice) {
+				logger.Fatal("input type cannot be streamed as it is not an array or slice but " + fmt.Sprint(inputType))
+			}
 
-				if !(inputType.Kind() == reflect.Array || inputType.Kind() == reflect.Slice) {
-					logger.Fatal("input type cannot be streamed as it is not an array or slice but " + fmt.Sprint(inputType))
-				}
-
-				options := processConfig.InputOptions()
-				options.Type = inputType
-				objects, err := options.DeserializeBytes(inputBytes, verbose)
-				//objects, err := gss.DeserializeBytes(inputBytesPlain, inputConfig.Format, inputConfig.Header, inputConfig.Comment, inputConfig.LazyQuotes, inputConfig.SkipLines, inputConfig.Limit, inputType, verbose)
-				if err != nil {
-					logger.Fatal(errors.Wrap(err, "error deserializing input using format "+processConfig.Input.Format))
-				}
-				inputObjects = objects
+			options := processConfig.InputOptions()
+			options.Type = inputType
+			inputObjects, err := options.DeserializeBytes(inputBytes, verbose)
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error deserializing input using format "+processConfig.Input.Format))
 			}
 
 			dflNode, err := processConfig.Dfl.Node()
@@ -768,6 +738,93 @@ func processFunction(cmd *cobra.Command, args []string) {
 			logger.Fatal(err)
 		}
 
+		var wgObjects sync.WaitGroup
+		var wgMessages sync.WaitGroup
+		errorsChannel := make(chan error, 1000)
+		messages := make(chan interface{}, 1000)
+		outputObjects := make(chan interface{}, 1000)
+
+		wgObjects.Add(1)
+		wgMessages.Add(1)
+		logger.ListenFatal(errorsChannel)
+		logger.ListenInfo(messages, &wgMessages)
+
+		if processConfig.Input.IsAthenaStoredQuery() {
+
+			athenaIterator, err := processAthenaInput(
+				processConfig.Input.Uri,
+				processConfig.Input.Limit,
+				processConfig.Temp.Uri,
+				processConfig.Output.Format,
+				athenaClient,
+				logger,
+				verbose)
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error processing athena input"))
+			}
+
+			handleOutput(
+				processConfig.Output,
+				dflVars,
+				outputObjects,
+				errorsChannel,
+				messages,
+				fileDescriptorLimit,
+				&wgObjects,
+				s3_client,
+				verbose)
+
+			inputCount := 0
+			for {
+
+				line, err := athenaIterator.Next()
+				if err != nil {
+					if err == io.EOF {
+						break
+					} else {
+						logger.Fatal(errors.Wrap(err, "error from athena iterator"))
+					}
+				}
+
+				//messages <- "processing line: " + string(line)
+
+				inputObject := map[string]interface{}{}
+				err = json.Unmarshal(line, &inputObject)
+				if err != nil {
+					logger.Fatal(errors.Wrap(err, "error unmarshalling value from athena results: "+string(line)))
+				}
+
+				outputObject, err := processObject(inputObject, dflNode, dflVars)
+				if err != nil {
+					switch err.(type) {
+					case *gss.ErrEmptyRow:
+					default:
+						logger.Fatal(errors.Wrap(err, "error processing object"))
+					}
+				} else {
+					switch outputObject.(type) {
+					case dfl.Null:
+					default:
+						outputObjects <- outputObject
+					}
+				}
+
+				inputCount += 1
+				if processConfig.Input.Limit > 0 && inputCount >= processConfig.Input.Limit {
+					break
+				}
+			}
+			messages <- "closing outputObjects"
+			close(outputObjects)
+			messages <- "waiting for wgObjects"
+			wgObjects.Wait()
+			messages <- "waiting for wgMessages"
+			wgMessages.Wait()
+			logger.Close()
+			return
+
+		}
+
 		if len(processConfig.Input.Header) == 0 && (processConfig.Input.Format == "csv" || processConfig.Input.Format == "tsv") {
 			inputBytes, err := inputReader.ReadBytes('\n')
 			if err != nil {
@@ -792,17 +849,8 @@ func processFunction(cmd *cobra.Command, args []string) {
 			processConfig.Input.Header = h
 		}
 
-		var wgObjects sync.WaitGroup
-		var wgMessages sync.WaitGroup
-		errorsChannel := make(chan error, 1000)
-		messages := make(chan interface{}, 1000)
 		inputLines := make(chan []byte, 1000)
-		outputObjects := make(chan interface{}, 1000)
 
-		wgObjects.Add(1)
-		wgMessages.Add(1)
-		logger.ListenFatal(errorsChannel)
-		logger.ListenInfo(messages, &wgMessages)
 		handleInput(
 			inputLines,
 			processConfig.Input,
@@ -812,6 +860,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 			processConfig.Output.Format,
 			errorsChannel,
 			verbose)
+
 		handleOutput(
 			processConfig.Output,
 			dflVars,
@@ -856,7 +905,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 	outputString := ""
 	if processConfig.Input.IsAthenaStoredQuery() {
 
-		outputObjects, err := processAthenaInput(
+		athenaIterator, err := processAthenaInput(
 			processConfig.Input.Uri,
 			processConfig.Input.Limit,
 			processConfig.Temp.Uri,
@@ -865,6 +914,24 @@ func processFunction(cmd *cobra.Command, args []string) {
 			logger, verbose)
 		if err != nil {
 			logger.Fatal(errors.Wrap(err, "error processing athena input"))
+		}
+
+		outputObjects := make([]map[string]interface{}, 0)
+		for {
+			line, err := athenaIterator.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				} else {
+					logger.Fatal(errors.Wrap(err, "error from athena iterator"))
+				}
+			}
+			object := map[string]interface{}{}
+			err = json.Unmarshal(line, &object)
+			if err != nil {
+				logger.Fatal(errors.Wrap(err, "error unmarshalling value from athena results: "+string(line)))
+			}
+			outputObjects = append(outputObjects, object)
 		}
 
 		if len(processConfig.Output.Format) == 0 {
