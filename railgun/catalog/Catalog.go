@@ -79,6 +79,7 @@ func (c *Catalog) Add(obj interface{}) error {
 
 		c.objects[typeName] = reflect.Append(reflect.ValueOf(c.objects[typeName]), reflect.ValueOf(obj)).Interface()
 		c.indices[typeName][n.GetName()] = reflect.ValueOf(c.objects[typeName]).Len() - 1
+		return nil
 	}
 
 	return &rerrors.ErrMissingMethod{Type: typeName, Method: "GetName() string"}
