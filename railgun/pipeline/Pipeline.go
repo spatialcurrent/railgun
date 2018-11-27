@@ -20,6 +20,12 @@ func (p *Pipeline) FilterBoundingBox() *Pipeline {
 	}
 }
 
+func (p *Pipeline) Next(next dfl.Node) *Pipeline {
+	return &Pipeline{
+		Nodes: append(p.Nodes, next),
+	}
+}
+
 func (p *Pipeline) FilterCustom(filterNode dfl.Node) *Pipeline {
 	return &Pipeline{
 		Nodes: append(p.Nodes, dfl.Function{Name: "filter", MultiOperator: &dfl.MultiOperator{Arguments: []dfl.Node{
@@ -41,13 +47,12 @@ func (p *Pipeline) GeoJSON() *Pipeline {
 	}
 }
 
-func (p *Pipeline) Evaluate(vars map[string]interface{}, inputObject interface{}) (interface{}, error) {
-	_, outputObject, err := dfl.Pipeline{Nodes: p.Nodes}.Evaluate(
+func (p *Pipeline) Evaluate(vars map[string]interface{}, inputObject interface{}) (map[string]interface{}, interface{}, error) {
+	return dfl.Pipeline{Nodes: p.Nodes}.Evaluate(
 		vars,
 		inputObject,
 		dfl.DefaultFunctionMap,
 		dfl.DefaultQuotes)
-	return outputObject, err
 }
 
 func New() *Pipeline {

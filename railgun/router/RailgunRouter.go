@@ -40,11 +40,10 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 		SessionDuration: v.GetDuration("jwt-session-duration"),
 	}
 
-	//r.Use(GzipMiddleware)
 	if v.GetBool("http-middleware-gzip") {
 		r.Use(gziphandler.MustNewGzipLevelHandler(gzip.DefaultCompression))
 	}
-	r.Use(DebugMiddleware)
+	r.Use(DebugMiddleware(messages))
 	r.Use(CorsMiddleware(v.GetString("cors-origin"), v.GetString("cors-credentials")))
 
 	r.AddHomeHandler("home", "/")
@@ -126,6 +125,8 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 
 	r.AddServiceExecHandler("service_exec", "/services/{name}/exec.{ext}")
 
+	r.AddServiceTileHandler("service_tile", "/services/{name}/tiles/{z}/{x}/{y}.{ext}")
+
 	r.AddJobExecHandler("job_exec", "/jobs/{name}/exec.{ext}")
 
 	r.AddWorkflowExecHandler("workflow_exec", "/workflows/{name}/exec.{ext}")
@@ -204,6 +205,13 @@ func (r *RailgunRouter) AddHomeHandler(name string, path string) {
 
 func (r *RailgunRouter) AddServiceExecHandler(name string, path string) {
 	r.Methods("POST", "OPTIONS").Name(name).Path(path).Handler(&handlers.ServiceExecHandler{
+		BaseHandler: r.NewBaseHandler(),
+		Cache:       gocache.New(5*time.Minute, 10*time.Minute),
+	})
+}
+
+func (r *RailgunRouter) AddServiceTileHandler(name string, path string) {
+	r.Methods("GET").Name(name).Path(path).Handler(&handlers.ServiceTileHandler{
 		BaseHandler: r.NewBaseHandler(),
 		Cache:       gocache.New(5*time.Minute, 10*time.Minute),
 	})

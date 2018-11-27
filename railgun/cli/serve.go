@@ -43,51 +43,42 @@ func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, errorWrit
 	requests := make(chan request.Request, 10000)
 	messages := make(chan interface{}, 10000)
 
-	if logFormat == "text" {
-		go func(requests chan request.Request, logRequestsTile bool, logRequestsCache bool) {
-			for r := range requests {
-				switch r.(type) {
-				case *request.TileRequest:
-					if logRequestsTile {
-						messages <- r.String()
+	go func(requests chan request.Request, format string, errorsChannel chan error, logRequestsTile bool, logRequestsCache bool) {
+		for r := range requests {
+			switch r.(type) {
+			case *request.TileRequest:
+				if logRequestsTile {
+					msg, err := r.Serialize(format)
+					if err != nil {
+						errorsChannel <- err
+					} else {
+						messages <- msg
 					}
-				case *request.CacheRequest:
-					if logRequestsCache {
-						messages <- r.String()
+				}
+			case *request.CacheRequest:
+				if logRequestsCache {
+					msg, err := r.Serialize(format)
+					if err != nil {
+						errorsChannel <- err
+					} else {
+						messages <- msg
 					}
 				}
 			}
-		}(requests, v.GetBool("log-requests-tile"), v.GetBool("log-requests-cache"))
-	} else {
-		go func(requests chan request.Request, format string, errorsChannel chan error, logRequestsTile bool, logRequestsCache bool) {
-			for r := range requests {
-				switch r.(type) {
-				case *request.TileRequest:
-					if logRequestsTile {
-						msg, err := r.Serialize(format)
-						if err != nil {
-							errorsChannel <- err
-						} else {
-							messages <- msg
-						}
-					}
-				case *request.CacheRequest:
-					if logRequestsCache {
-						msg, err := r.Serialize(format)
-						if err != nil {
-							errorsChannel <- err
-						} else {
-							messages <- msg
-						}
-					}
-				}
-			}
-		}(requests, logFormat, errorsChannel, v.GetBool("log-requests-tile"), v.GetBool("log-requests-cache"))
-	}
+		}
+	}(requests, logFormat, errorsChannel, v.GetBool("log-requests-tile"), v.GetBool("log-requests-cache"))
 
 	go func(messages chan interface{}) {
 		for message := range messages {
-			logWriter.WriteString(fmt.Sprint(message) + "\n")
+			if str, ok := message.(string); ok {
+				logWriter.WriteLine(str)
+			} else {
+				str, err := gss.SerializeString(message, logFormat, gss.NoHeader, gss.NoLimit)
+				if err != nil {
+					panic(err)
+				}
+				logWriter.WriteLine(str)
+			}
 			logWriter.Flush()
 		}
 	}(messages)

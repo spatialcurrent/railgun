@@ -1,26 +1,23 @@
 package router
 
 import (
-	"fmt"
-	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"context"
 	"net/http"
+	"time"
 )
 
-var DebugMiddleware = func(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+var DebugMiddleware = func(messages chan interface{}) func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		requestObject := map[string]string{
-			"url":    r.URL.String(),
-			"Method": r.Method,
-		}
+			ctx := context.WithValue(r.Context(), "request", map[string]interface{}{
+				"host":   r.Host,
+				"url":    r.URL.String(),
+				"method": r.Method,
+				"time":   time.Now().Format(time.RFC3339),
+			})
 
-		requestProperties, err := gss.SerializeString(requestObject, "properties", []string{}, gss.NoLimit)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("# Request #")
-		fmt.Println(requestProperties)
-		next.ServeHTTP(w, r)
-	})
+			h.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

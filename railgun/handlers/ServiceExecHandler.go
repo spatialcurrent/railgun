@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
-	"reflect"
+	//"reflect"
 	"strings"
 	"time"
 )
@@ -27,9 +27,8 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/go-try-get/gtg"
+	//"github.com/spatialcurrent/go-try-get/gtg"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
-	"github.com/spatialcurrent/railgun/railgun/parser"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -37,9 +36,6 @@ type ServiceExecHandler struct {
 	*BaseHandler
 	Cache *gocache.Cache
 }
-
-var cacheKeyDataStoreFormat = "datastore=%s\nuri=%s\nlastmodified=%d"
-var cacheKeyServiceFormat = "service=%s\nvariables"
 
 func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
@@ -91,41 +87,15 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, errors.Wrap(err, "error reading from request body")
 	}
 
-	variables := map[string]interface{}{}
-
-	cacheKeyService := fmt.Sprintf(cacheKeyServiceFormat, serviceName)
-
-	// Load variables from cache
-	if cacheVariables, found := h.Cache.Get(cacheKeyService); found {
-		if m, ok := cacheVariables.(*map[string]interface{}); ok {
-			h.Messages <- "variables found in cache " + cacheKeyService
-			for k, v := range *m {
-				variables[k] = v
-			}
-		}
+	jobVariables, err := h.ParseVariables(body, format)
+	if err != nil {
+		return nil, errors.Wrap(err, "error parsing variables from body")
 	}
 
-	// Load default variable values from service definition
-	for k, v := range service.Defaults {
-		variables[k] = v
-	}
-
-	// Load variables from request body
-	if len(body) > 0 {
-		obj, err := h.ParseBody(body, format)
-		if err != nil {
-			return nil, errors.Wrap(err, "error parsing body")
-		}
-
-		jobVariables, err := parser.ParseMap(obj, "variables")
-		if err != nil {
-			return nil, &rerrors.ErrInvalidParameter{Name: "variables", Value: gtg.TryGetString(obj, "variables", "")}
-		}
-
-		for k, v := range jobVariables {
-			variables[k] = v
-		}
-	}
+	variables := h.AggregateMaps(
+		h.GetServiceVariables(h.Cache, serviceName),
+		service.Defaults,
+		jobVariables)
 
 	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
@@ -186,11 +156,10 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 			inputUri := fmt.Sprintf("s3://%s/%s", bucket, key)
 			inputUris = append(inputUris, inputUri)
 
-			cacheKeyDataStore = fmt.Sprintf(
-				cacheKeyDataStoreFormat,
+			cacheKeyDataStore = h.BuildCacheKeyDataStore(
 				service.DataStore.Name,
 				inputUri,
-				lastModified[fmt.Sprintf("s3://%s/%s", bucket, key)].UnixNano())
+				lastModified[fmt.Sprintf("s3://%s/%s", bucket, key)])
 
 			//fmt.Println("* checking cache with key\n:", cacheKeyDataStore)
 
@@ -215,11 +184,10 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 		lastModified[inputUri] = inputFileInfo.ModTime()
 
-		cacheKeyDataStore = fmt.Sprintf(
-			cacheKeyDataStoreFormat,
+		cacheKeyDataStore = h.BuildCacheKeyDataStore(
 			service.DataStore.Name,
 			inputUri,
-			lastModified[inputUri].UnixNano())
+			lastModified[inputUri])
 
 		if object, found := h.Cache.Get(cacheKeyDataStore); found {
 			//fmt.Println("cache hit for datastore with key " + cacheKeyDataStore)
@@ -250,42 +218,25 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 					}
 					inputBytes = b
 				} else {
-					r, _, err = grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, s3Client)
-					if err != nil {
-						return errors.Wrap(err, "error opening resource at uri "+inputUri)
-					}
-					b, err := r.ReadAllAndClose()
+					b, err := grw.ReadAllAndClose(inputUri, service.DataStore.Compression, s3Client)
 					if err != nil {
 						return errors.Wrap(err, "error reading from resource at uri "+inputUri)
 					}
 					inputBytes = b
 				}
 
-				//fmt.Println("* read all data for " + inputUri)
-
-				inputFormat := service.DataStore.Format
-
-				inputType, err := gss.GetType(inputBytes, inputFormat)
+				object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
 				if err != nil {
-					return errors.Wrap(err, "error getting type for input")
+					return errors.Wrap(err, "error deserializing input")
 				}
-
-				//fmt.Println("* deserializing data for " + inputUri)
-
-				object, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false)
-				if err != nil {
-					return errors.Wrap(err, "error deserializing input using format "+inputFormat)
-				}
-
 				inputObjects[i] = object
 
 			}
 
-			cacheKeyDataStore = fmt.Sprintf(
-				cacheKeyDataStoreFormat,
+			cacheKeyDataStore := h.BuildCacheKeyDataStore(
 				service.DataStore.Name,
 				inputUri,
-				lastModified[inputUri].UnixNano())
+				lastModified[inputUri])
 
 			h.Cache.Set(cacheKeyDataStore, inputObjects[i], gocache.DefaultExpiration)
 
@@ -300,22 +251,9 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 	//fmt.Println("* aggregating")
 
-	// Aggregate data into 1 slice
-	inputSlice := reflect.ValueOf(make([]interface{}, 0))
-	for i, inputObject := range inputObjects {
-		if kind := reflect.TypeOf(inputObject).Kind(); !(kind == reflect.Array || kind == reflect.Slice) {
-			return nil, errors.New("input object for uri " + inputUris[i] + " is not an array or slice")
-		}
-		inputObjectValue := reflect.ValueOf(inputObject)
-		inputObjectLength := inputObjectValue.Len()
-		for i := 0; i < inputObjectLength; i++ {
-			inputSlice = reflect.Append(inputSlice, inputObjectValue.Index(i))
-		}
-	}
-
 	//fmt.Println("* evaluating")
 
-	variables, outputObject, err := service.Process.Node.Evaluate(variables, inputSlice.Interface(), dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	variables, outputObject, err := service.Process.Node.Evaluate(variables, h.AggregateSlices(inputObjects), dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
 	}
@@ -323,12 +261,12 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 	//fmt.Println("* saving variables")
 
 	// Set the variables to the cache every time to bump the expiration
-	h.Cache.Set(cacheKeyService, &variables, gocache.DefaultExpiration)
+	h.SetServiceVariables(h.Cache, serviceName, variables)
 
 	//fmt.Println("* variables saved")
 
 	//fmt.Println("Output Object: ", outputObject)
 
-	return outputObject, nil
+	return gss.StringifyMapKeys(outputObject), nil
 
 }

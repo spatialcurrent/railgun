@@ -29,7 +29,7 @@ func (p Process) Map() map[string]interface{} {
 		"name":        p.Name,
 		"title":       p.Title,
 		"description": p.Description,
-		"expression":  p.Node.Dfl(dfl.DefaultQuotes, false, 0),
+		"expression":  p.Node.Dfl(dfl.DefaultQuotes, true, 0),
 		"variables":   p.Node.Variables(),
 	}
 	tags := make([]dfl.Node, 0)

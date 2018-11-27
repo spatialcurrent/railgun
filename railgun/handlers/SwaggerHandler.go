@@ -460,6 +460,42 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 				},
 			},
 		},
+		"/serivces/{name}/tiles/{z}/{x}/{y}.{ext}": swagger.Path{
+			Get: swagger.Operation{
+				Description: "Get GeoJSON tile of features returned by a Service.",
+				Tags:        []string{"Services"},
+				Parameters: []swagger.Parameter{
+					params["name"],
+					params["z"],
+					params["x"],
+					params["y"],
+					swagger.Parameter{
+						Name:        "ext",
+						Type:        "string",
+						Description: "File extension",
+						In:          "path",
+						Required:    true,
+						Default:     "json",
+						Enumeration: []string{"json", "jsonl", "yaml", "geojson", "geojsonl"},
+					},
+					swagger.Parameter{
+						Name:        "buffer",
+						Type:        "integer",
+						Description: "The number of tiles to buffer by.",
+						In:          "query",
+						Required:    false,
+						Default:     0,
+						Minimum:     aws.Int(0),
+					},
+					params["limit"],
+				},
+				Responses: map[string]swagger.Response{
+					"200": swagger.Response{
+						Description: "Success",
+					},
+				},
+			},
+		},
 		"/layers/{name}/tiles/data/{z}/{x}/{y}.{ext}": swagger.Path{
 			Get: swagger.Operation{
 				Description: "Get GeoJSON tile of features filtered by a DFL expression.",

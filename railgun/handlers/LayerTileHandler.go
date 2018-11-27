@@ -28,20 +28,20 @@ import (
 	"strings"
 )
 
-var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[],\"numberOfFeatures\":0}")
+var emptyFeatureCollectionBytes = []byte("{\"type\":\"FeatureCollection\",\"features\":[],\"numberOfFeatures\":0}")
 
 func respondWith404AndEmptyFeatureCollection(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNotFound)
-	w.Write(emptyFeatureCollection)
+	w.Write(emptyFeatureCollectionBytes)
 }
 
 func respondWith500AndEmptyFeatureCollection(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusInternalServerError)
-	w.Write(emptyFeatureCollection)
+	w.Write(emptyFeatureCollectionBytes)
 }
 
 func respondWithEmptyFeatureCollection(w http.ResponseWriter) {
-	w.Write(emptyFeatureCollection)
+	w.Write(emptyFeatureCollectionBytes)
 }
 
 type LayerTileHandler struct {
@@ -250,7 +250,7 @@ func (h *LayerTileHandler) Get(w http.ResponseWriter, r *http.Request, format st
 	variables["bbox"] = bufferedBoundingBox
 	variables["limit"] = limit
 
-	outputObject, err := p.Evaluate(
+	_, outputObject, err := p.Evaluate(
 		variables,
 		inputObject)
 	if err != nil {

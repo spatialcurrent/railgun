@@ -11,6 +11,13 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"reflect"
+	"strings"
+	"time"
+)
+
+import (
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/formatters/html"
 	"github.com/alecthomas/chroma/lexers"
@@ -21,14 +28,13 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/go-try-get/gtg"
 	"github.com/spatialcurrent/railgun/railgun/catalog"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/parser"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spatialcurrent/viper"
-	"net/http"
-	"strings"
-	"time"
 )
 
 type BaseHandler struct {
@@ -42,6 +48,31 @@ type BaseHandler struct {
 	PrivateKey      *rsa.PrivateKey
 	SessionDuration time.Duration
 	ValidMethods    []string
+}
+
+func (h *BaseHandler) SendMessage(message interface{}) {
+	h.Messages <- message
+}
+
+func (h *BaseHandler) BuildCacheKeyDataStore(datastore string, uri string, lastModified time.Time) string {
+	return fmt.Sprintf("datastore=%s\nuri=%s\nlastmodified=%d", datastore, uri, lastModified.UnixNano())
+}
+
+func (h *BaseHandler) BuildCacheKeyServiceVariables(service string) string {
+	return fmt.Sprintf("service=%s\nvariables", service)
+}
+
+func (h *BaseHandler) GetServiceVariables(cache *gocache.Cache, service string) map[string]interface{} {
+	if cacheVariables, found := cache.Get(h.BuildCacheKeyServiceVariables(service)); found {
+		if m, ok := cacheVariables.(*map[string]interface{}); ok {
+			return *m
+		}
+	}
+	return map[string]interface{}{}
+}
+
+func (h *BaseHandler) SetServiceVariables(cache *gocache.Cache, service string, variables map[string]interface{}) {
+	cache.Set(h.BuildCacheKeyServiceVariables(service), &variables, gocache.DefaultExpiration)
 }
 
 func (h *BaseHandler) GetAuthorization(r *http.Request) (string, error) {
@@ -258,4 +289,61 @@ func (h *BaseHandler) RespondWithNotImplemented(w http.ResponseWriter, format st
 	w.WriteHeader(http.StatusNotImplemented)
 	w.Write(b)
 	return nil
+}
+
+func (h *BaseHandler) AggregateSlices(inputObjects []interface{}) []interface{} {
+	outputSlice := reflect.ValueOf(make([]interface{}, 0))
+	for _, inputObject := range inputObjects {
+		if kind := reflect.TypeOf(inputObject).Kind(); !(kind == reflect.Array || kind == reflect.Slice) {
+			continue
+		}
+		inputObjectValue := reflect.ValueOf(inputObject)
+		inputObjectLength := inputObjectValue.Len()
+		for i := 0; i < inputObjectLength; i++ {
+			outputSlice = reflect.Append(outputSlice, inputObjectValue.Index(i))
+		}
+	}
+	return outputSlice.Interface().([]interface{})
+}
+
+func (h *BaseHandler) AggregateMaps(inputMaps ...map[string]interface{}) map[string]interface{} {
+	outputMap := map[string]interface{}{}
+	for _, m := range inputMaps {
+		for k, v := range m {
+			outputMap[k] = v
+		}
+	}
+	return outputMap
+}
+
+func (h *BaseHandler) ParseVariables(body []byte, format string) (map[string]interface{}, error) {
+	if len(body) > 0 {
+		obj, err := h.ParseBody(body, format)
+		if err != nil {
+			return nil, errors.Wrap(err, "error parsing body")
+		}
+
+		variables, err := parser.ParseMap(obj, "variables")
+		if err != nil {
+			return nil, &rerrors.ErrInvalidParameter{Name: "variables", Value: gtg.TryGetString(obj, "variables", "")}
+		}
+
+		return variables, nil
+	}
+	return map[string]interface{}{}, nil
+}
+
+func (h *BaseHandler) DeserializeBytes(inputBytes []byte, inputFormat string) (interface{}, error) {
+
+	inputType, err := gss.GetType(inputBytes, inputFormat)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting type for input")
+	}
+
+	object, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false)
+	if err != nil {
+		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
+	}
+
+	return object, nil
 }
