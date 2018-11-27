@@ -72,6 +72,12 @@ func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, errorWrit
 		for message := range messages {
 			if str, ok := message.(string); ok {
 				logWriter.WriteLine(str)
+			} else if err, ok := message.(error); ok {
+				str, err := gss.SerializeString(map[string]interface{}{"type": "error", "message": err.Error()}, logFormat, gss.NoHeader, gss.NoLimit)
+				if err != nil {
+					panic(err)
+				}
+				logWriter.WriteLine(str)
 			} else {
 				str, err := gss.SerializeString(message, logFormat, gss.NoHeader, gss.NoLimit)
 				if err != nil {
@@ -422,5 +428,8 @@ func init() {
 	serveCmd.Flags().String("jwt-public-key-uri", "", "URI to public RSA Key for JWT")
 	serveCmd.Flags().StringArray("jwt-valid-methods", []string{"RS512"}, "Valid methods for JWT")
 	serveCmd.Flags().Duration("jwt-session-duration", 60*time.Minute, "duration of authenticated session")
+
+	// Tile
+	serveCmd.Flags().IntP("tile-random-delay", "", 200, "random delay for processing tiles in milliseconds")
 
 }

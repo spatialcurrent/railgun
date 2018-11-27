@@ -10,9 +10,11 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 )
 
 import (
@@ -46,9 +48,7 @@ type ServiceTileHandler struct {
 
 func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	ctx := context.WithValue(r.Context(), "handler", map[string]interface{}{
-		"name": reflect.TypeOf(h).Elem().Name(),
-	})
+	ctx := context.WithValue(r.Context(), "handler", reflect.TypeOf(h).Elem().Name())
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
@@ -61,6 +61,7 @@ func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
 			if err != nil {
+				h.Messages <- err
 				panic(err)
 			}
 		} else {
@@ -69,6 +70,7 @@ func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
 				if err != nil {
+					h.Messages <- err
 					panic(err)
 				}
 			}
@@ -76,6 +78,7 @@ func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		err := h.RespondWithNotImplemented(w, format)
 		if err != nil {
+			h.Messages <- err
 			panic(err)
 		}
 	}
@@ -89,33 +92,75 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		Context: context.WithValue(r.Context(), "vars", vars),
 	}
 
+	// Randomly sleep to increase cache performance.
+	hit := false
+	delay := time.Duration(0) * time.Millisecond
+	if tileRandomDelay := h.Viper.GetInt("tile-random-delay"); tileRandomDelay > 0 {
+		delay = time.Duration(rand.Intn(tileRandomDelay)) * time.Millisecond
+		time.Sleep(delay)
+	}
+
 	defer func() {
-		h.SendMessage(map[string]interface{}{
+		start := ctx.Context.Value("start").(time.Time)
+		end := time.Now()
+
+		m := map[string]interface{}{
 			"request":   ctx.Context.Value("request"),
 			"handler":   ctx.Context.Value("handler"),
 			"vars":      ctx.Context.Value("vars"),
 			"service":   ctx.Context.Value("service"),
 			"datastore": ctx.Context.Value("datastore"),
-			"uri":       ctx.Context.Value("uri"),
-			"bucket":    ctx.Context.Value("bucket"),
-			"key":       ctx.Context.Value("key"),
-		})
+			"process":   ctx.Context.Value("process"),
+			"profile": map[string]interface{}{
+				"start":    start.Format(time.RFC3339),
+				"delay":    delay.String(),
+				"end":      end.Format(time.RFC3339),
+				"duration": end.Sub(start).String(),
+			},
+			"cache": map[string]interface{}{
+				"hit": hit,
+			},
+		}
+		if uri := ctx.Context.Value("uri"); uri != nil {
+			m["uri"] = uri
+		}
+		s3 := map[string]interface{}{}
+		if bucket := ctx.Context.Value("bucket"); bucket != nil {
+			s3["bucket"] = bucket
+		}
+		if key := ctx.Context.Value("key"); key != nil {
+			s3["key"] = key
+		}
+		if len(s3) > 0 {
+			m["s3"] = s3
+		}
+		if v := ctx.Context.Value("error"); v != nil {
+			if err, ok := v.(error); ok {
+				m["error"] = err.Error()
+			}
+		}
+		h.SendMessage(m)
 	}()
 
 	qs := request.NewQueryString(r)
 
 	serviceName, ok := vars["name"]
 	if !ok {
-		return nil, &rerrors.ErrMissingRequiredParameter{Name: "name"}
+		err := &rerrors.ErrMissingRequiredParameter{Name: "name"}
+		ctx.Context = context.WithValue(ctx.Context, "error", err)
+		return nil, err
 	}
 
 	service, ok := h.Catalog.GetService(serviceName)
 	if !ok {
-		return nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
+		err := &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
+		ctx.Context = context.WithValue(ctx.Context, "error", err)
+		return nil, err
 	}
 
-	ctx.Context = context.WithValue(ctx.Context, "service", service.Map())
-	ctx.Context = context.WithValue(ctx.Context, "datastore", service.DataStore.Map())
+	ctx.Context = context.WithValue(ctx.Context, "service", service.Name)
+	ctx.Context = context.WithValue(ctx.Context, "datastore", service.DataStore.Name)
+	ctx.Context = context.WithValue(ctx.Context, "process", service.Process.Name)
 
 	tileRequest := &request.TileRequest{Layer: serviceName, Header: r.Header}
 	cacheRequest := &request.CacheRequest{}
@@ -131,6 +176,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 
 	tile, err := core.NewTileFromRequestVars(vars)
 	if err != nil {
+		ctx.Context = context.WithValue(ctx.Context, "error", err)
 		return nil, err
 	}
 	tileRequest.Tile = tile
@@ -175,6 +221,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 
 	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
+		ctx.Context = context.WithValue(ctx.Context, "error", err)
 		return emptyFeatureCollection, nil
 	}
 
@@ -214,7 +261,9 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 			Key:    aws.String(key),
 		})
 		if err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("error heading S3 object at bucket %s and key %s", bucket, key))
+			err := errors.Wrap(err, fmt.Sprintf("error heading S3 object at bucket %s and key %s", bucket, key))
+			ctx.Context = context.WithValue(ctx.Context, "error", err)
+			return nil, err
 		}
 
 		cacheKeyDataStore = h.BuildCacheKeyDataStore(
@@ -223,6 +272,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 			*headObjectOutput.LastModified)
 
 		if object, found := h.Cache.Get(cacheKeyDataStore); found {
+			hit = true
 			inputObject = object
 			inputReader = nil
 			cacheRequest.Hit = true
@@ -235,6 +285,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	} else if inputScheme == "file" || inputScheme == "" {
 		inputFile, inputFileInfo, err := grw.ExpandOpenAndStat(inputPath)
 		if err != nil {
+			ctx.Context = context.WithValue(ctx.Context, "error", err)
 			return nil, err
 		}
 
@@ -244,6 +295,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 			inputFileInfo.ModTime())
 
 		if object, found := h.Cache.Get(cacheKeyDataStore); found {
+			hit = true
 			inputObject = object
 			inputReader = nil
 			cacheRequest.Hit = true
@@ -252,7 +304,9 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 			cacheRequest.Hit = false
 			r, err := grw.ReadFromFile(inputFile, service.DataStore.Compression, false, 4096)
 			if err != nil {
-				return nil, errors.Wrap(err, "error creating grw.ByteReadCloser for file at path \""+inputPath+"\"")
+				err := errors.Wrap(err, "error creating grw.ByteReadCloser for file at path \""+inputPath+"\"")
+				ctx.Context = context.WithValue(ctx.Context, "error", err)
+				return nil, err
 			}
 			inputReader = r
 		}
@@ -263,20 +317,26 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		if inputReader != nil {
 			b, err := inputReader.ReadAllAndClose()
 			if err != nil {
-				return nil, errors.Wrap(err, "error reading from resource at uri "+inputUri)
+				err := errors.Wrap(err, "error reading from resource at uri "+inputUri)
+				ctx.Context = context.WithValue(ctx.Context, "error", err)
+				return nil, err
 			}
 			inputBytes = b
 		} else {
 			b, err := grw.ReadAllAndClose(inputUri, service.DataStore.Compression, s3Client)
 			if err != nil {
-				return nil, errors.Wrap(err, "error reading from resource at uri "+inputUri)
+				err := errors.Wrap(err, "error reading from resource at uri "+inputUri)
+				ctx.Context = context.WithValue(ctx.Context, "error", err)
+				return nil, err
 			}
 			inputBytes = b
 		}
 
 		object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
 		if err != nil {
-			return nil, errors.Wrap(err, "error deserializing input")
+			err := errors.Wrap(err, "error deserializing input")
+			ctx.Context = context.WithValue(ctx.Context, "error", err)
+			return nil, err
 		}
 		inputObject = object
 	}
@@ -287,7 +347,9 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		variables,
 		inputObject)
 	if err != nil {
-		return nil, errors.Wrap(err, "error processing features")
+		err := errors.Wrap(err, "error processing features")
+		ctx.Context = context.WithValue(ctx.Context, "error", err)
+		return nil, err
 	}
 
 	tileRequest.Features = gtg.TryGetInt(outputObject, "numberOfFeatures", 0)
