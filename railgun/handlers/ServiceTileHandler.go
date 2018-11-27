@@ -9,6 +9,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -84,13 +85,20 @@ func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
 
 	vars := mux.Vars(r)
-	ctx := context.WithValue(r.Context(), "vars", vars)
+	ctx := struct{ Context context.Context }{
+		Context: context.WithValue(r.Context(), "vars", vars),
+	}
 
 	defer func() {
 		h.SendMessage(map[string]interface{}{
-			"request": ctx.Value("request"),
-			"handler": ctx.Value("handler"),
-			"vars":    ctx.Value("vars"),
+			"request":   ctx.Context.Value("request"),
+			"handler":   ctx.Context.Value("handler"),
+			"vars":      ctx.Context.Value("vars"),
+			"service":   ctx.Context.Value("service"),
+			"datastore": ctx.Context.Value("datastore"),
+			"uri":       ctx.Context.Value("uri"),
+			"bucket":    ctx.Context.Value("bucket"),
+			"key":       ctx.Context.Value("key"),
 		})
 	}()
 
@@ -101,6 +109,14 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		return nil, &rerrors.ErrMissingRequiredParameter{Name: "name"}
 	}
 
+	service, ok := h.Catalog.GetService(serviceName)
+	if !ok {
+		return nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
+	}
+
+	ctx.Context = context.WithValue(ctx.Context, "service", service.Map())
+	ctx.Context = context.WithValue(ctx.Context, "datastore", service.DataStore.Map())
+
 	tileRequest := &request.TileRequest{Layer: serviceName, Header: r.Header}
 	cacheRequest := &request.CacheRequest{}
 	// Defer putting tile request into requests channel, so it can pick up more metadata during execution
@@ -110,11 +126,6 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 			h.Requests <- cacheRequest
 		}
 	}()
-
-	service, ok := h.Catalog.GetService(serviceName)
-	if !ok {
-		return nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
-	}
 
 	tileRequest.Expression = service.Process.Node.Dfl(dfl.DefaultQuotes, true, 0)
 
@@ -167,6 +178,8 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		return emptyFeatureCollection, nil
 	}
 
+	ctx.Context = context.WithValue(ctx.Context, "uri", inputUri)
+
 	inputScheme, inputPath := grw.SplitUri(inputUri)
 
 	tileRequest.Source = inputUri
@@ -192,12 +205,16 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 
 		bucket := inputPath[0:i]
 		key := inputPath[i+1:]
+
+		ctx.Context = context.WithValue(ctx.Context, "bucket", bucket)
+		ctx.Context = context.WithValue(ctx.Context, "key", key)
+
 		headObjectOutput, err := s3Client.HeadObject(&s3.HeadObjectInput{
 			Bucket: aws.String(bucket),
 			Key:    aws.String(key),
 		})
 		if err != nil {
-			return nil, errors.Wrap(err, "error heading S3 object")
+			return nil, errors.Wrap(err, fmt.Sprintf("error heading S3 object at bucket %s and key %s", bucket, key))
 		}
 
 		cacheKeyDataStore = h.BuildCacheKeyDataStore(
