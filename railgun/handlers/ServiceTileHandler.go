@@ -9,11 +9,14 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -93,6 +96,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	}
 
 	// Randomly sleep to increase cache performance.
+	inside := true
 	hit := false
 	delay := time.Duration(0) * time.Millisecond
 	if tileRandomDelay := h.Viper.GetInt("tile-random-delay"); tileRandomDelay > 0 {
@@ -103,7 +107,21 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	defer func() {
 		start := ctx.Context.Value("start").(time.Time)
 		end := time.Now()
-
+		profile := map[string]interface{}{
+			"start":    start.Format(time.RFC3339),
+			"delay":    delay.String(),
+			"end":      end.Format(time.RFC3339),
+			"duration": end.Sub(start).String(),
+		}
+		if d := ctx.Context.Value("profile_head"); d != nil {
+			profile["head"] = d
+		}
+		if d := ctx.Context.Value("profile_read"); d != nil {
+			profile["read"] = d
+		}
+		if d := ctx.Context.Value("profile_deserialize"); d != nil {
+			profile["deserialize"] = d
+		}
 		m := map[string]interface{}{
 			"request":   ctx.Context.Value("request"),
 			"handler":   ctx.Context.Value("handler"),
@@ -111,15 +129,11 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 			"service":   ctx.Context.Value("service"),
 			"datastore": ctx.Context.Value("datastore"),
 			"process":   ctx.Context.Value("process"),
-			"profile": map[string]interface{}{
-				"start":    start.Format(time.RFC3339),
-				"delay":    delay.String(),
-				"end":      end.Format(time.RFC3339),
-				"duration": end.Sub(start).String(),
-			},
+			"profile":   profile,
 			"cache": map[string]interface{}{
 				"hit": hit,
 			},
+			"inside": inside,
 		}
 		if uri := ctx.Context.Value("uri"); uri != nil {
 			m["uri"] = uri
@@ -189,6 +203,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		maxY := geo.LatitudeToTile(maxExtent[1], tile.Z) // flip y
 		if tile.X < minX || tile.X > maxX || tile.Y < minY || tile.Y > maxY {
 			tileRequest.OutsideExtent = true
+			inside = false
 			return emptyFeatureCollection, nil
 		}
 	}
@@ -222,6 +237,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
 		ctx.Context = context.WithValue(ctx.Context, "error", err)
+		inside = false
 		return emptyFeatureCollection, nil
 	}
 
@@ -256,10 +272,19 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		ctx.Context = context.WithValue(ctx.Context, "bucket", bucket)
 		ctx.Context = context.WithValue(ctx.Context, "key", key)
 
-		headObjectOutput, err := s3Client.HeadObject(&s3.HeadObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(key),
-		})
+		start := time.Now()
+		var headObjectOutput *s3.HeadObjectOutput
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			headObjectOutput, err = s3Client.HeadObject(&s3.HeadObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    aws.String(key),
+			})
+			wg.Done()
+		}()
+		wg.Wait()
+		ctx.Context = context.WithValue(ctx.Context, "profile_head", time.Now().Sub(start).String())
 		if err != nil {
 			err := errors.Wrap(err, fmt.Sprintf("error heading S3 object at bucket %s and key %s", bucket, key))
 			ctx.Context = context.WithValue(ctx.Context, "error", err)
@@ -313,35 +338,91 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	}
 
 	if inputObject == nil {
-		inputBytes := make([]byte, 0)
-		if inputReader != nil {
-			b, err := inputReader.ReadAllAndClose()
+		start := time.Now()
+		if inputReader == nil {
+			inputReader, _, err = grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, false, s3Client)
 			if err != nil {
-				err := errors.Wrap(err, "error reading from resource at uri "+inputUri)
-				ctx.Context = context.WithValue(ctx.Context, "error", err)
 				return nil, err
 			}
-			inputBytes = b
+		}
+		if service.DataStore.Format == "jsonl" {
+			inputSlice := make([]interface{}, 0)
+			decoder := json.NewDecoder(inputReader)
+			for {
+				object := map[string]interface{}{}
+				err := decoder.Decode(&object)
+				if err != nil {
+					if err == io.EOF {
+						break
+					} else if err != nil {
+						ctx.Context = context.WithValue(ctx.Context, "error", err)
+						return nil, err
+					}
+				}
+				inputSlice = append(inputSlice, object)
+			}
+			inputObject = inputSlice
 		} else {
-			b, err := grw.ReadAllAndClose(inputUri, service.DataStore.Compression, s3Client)
+			inputBytes, err := inputReader.ReadAllAndClose()
 			if err != nil {
 				err := errors.Wrap(err, "error reading from resource at uri "+inputUri)
 				ctx.Context = context.WithValue(ctx.Context, "error", err)
 				return nil, err
 			}
-			inputBytes = b
+			inputSlice, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
+			if err != nil {
+				err := errors.Wrap(err, "error deserializing input")
+				ctx.Context = context.WithValue(ctx.Context, "error", err)
+				return nil, err
+			}
+			inputObject = inputSlice
 		}
-
-		object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
-		if err != nil {
-			err := errors.Wrap(err, "error deserializing input")
-			ctx.Context = context.WithValue(ctx.Context, "error", err)
-			return nil, err
-		}
-		inputObject = object
+		ctx.Context = context.WithValue(ctx.Context, "profile_read", time.Now().Sub(start).String())
 	}
 
-	h.Cache.Set(cacheKeyDataStore, inputObject, gocache.DefaultExpiration)
+	/*
+
+		if inputObject == nil {
+
+			start := time.Now()
+			var err error
+			inputBytes := make([]byte, 0)
+			wg := &sync.WaitGroup{}
+			wg.Add(1)
+			if inputReader != nil {
+				go func() {
+					inputBytes, err = inputReader.ReadAllAndClose()
+					wg.Done()
+				}()
+			} else {
+				go func() {
+					inputBytes, err = grw.ReadAllAndClose(inputUri, service.DataStore.Compression, s3Client)
+					wg.Done()
+				}()
+			}
+			wg.Wait()
+			ctx.Context = context.WithValue(ctx.Context, "profile_read", time.Now().Sub(start).String())
+			if err != nil {
+				err := errors.Wrap(err, "error reading from resource at uri "+inputUri)
+				ctx.Context = context.WithValue(ctx.Context, "error", err)
+				return nil, err
+			}
+
+			start = time.Now()
+			object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
+			if err != nil {
+				err := errors.Wrap(err, "error deserializing input")
+				ctx.Context = context.WithValue(ctx.Context, "error", err)
+				return nil, err
+			}
+			inputObject = object
+			ctx.Context = context.WithValue(ctx.Context, "profile_deserialize", time.Now().Sub(start).String())
+		}
+
+
+	*/
+
+	go h.Cache.Set(cacheKeyDataStore, inputObject, gocache.DefaultExpiration) // save variables to cache outside of request/response thread
 
 	variables, outputObject, err := p.Evaluate(
 		variables,
@@ -354,7 +435,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 
 	tileRequest.Features = gtg.TryGetInt(outputObject, "numberOfFeatures", 0)
 
-	h.SetServiceVariables(h.Cache, serviceName, variables)
+	go h.SetServiceVariables(h.Cache, serviceName, variables) // save variables to cache outside of request/response thread
 
 	return gss.StringifyMapKeys(outputObject), nil
 

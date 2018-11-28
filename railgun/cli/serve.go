@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -208,6 +209,16 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		fmt.Println(str)
 		fmt.Println("=================================================")
 	}
+
+	// Runtime Flags
+	runtimeMaxProcs := v.GetInt("runtime-max-procs")
+	if runtimeMaxProcs == 0 {
+		runtimeMaxProcs = runtime.NumCPU()
+	} else if runtimeMaxProcs < 0 {
+		panic(errors.New("runtime-max-procs cannot be less than 1"))
+	}
+	fmt.Println(fmt.Sprintf("Maximum number of parallel procsses set to %d", runtimeMaxProcs))
+	runtime.GOMAXPROCS(runtimeMaxProcs)
 
 	// HTTP Flags
 	address := v.GetString("http-address")

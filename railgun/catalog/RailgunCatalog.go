@@ -565,7 +565,7 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 			return nil, err
 		}
 
-		inputObject, err := gss.DeserializeBytes(inputBytes, format, gss.NoHeader, "", false, gss.NoSkip, gss.NoLimit, inputType, false)
+		inputObject, err := gss.DeserializeBytes(inputBytes, format, gss.NoHeader, "", false, gss.NoSkip, gss.NoLimit, inputType, false, false)
 		if err != nil {
 			return nil, err
 		}

@@ -40,7 +40,7 @@ func convertFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	outputString, err := gss.Convert(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, outputFormat, outputHeader, outputLimit, verbose)
+	outputString, err := gss.Convert(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, outputFormat, outputHeader, outputLimit, false, verbose)
 	if err != nil {
 		fmt.Println(errors.Wrap(err, "error converting"))
 		os.Exit(1)

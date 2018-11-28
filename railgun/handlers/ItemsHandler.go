@@ -170,6 +170,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		gss.NoSkip,
 		gss.NoLimit,
 		outputType,
+		false,
 		false)
 	if err != nil {
 		return errors.Wrap(err, "error deserializing input")

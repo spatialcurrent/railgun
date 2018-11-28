@@ -115,7 +115,7 @@ func MakeRequest(input *RequestInput, outputWriter grw.ByteWriteCloser, errorWri
 		return err
 	}
 
-	respObject, err := gss.DeserializeBytes(respBytes, "json", []string{}, "", false, gss.NoSkip, gss.NoLimit, respType, false)
+	respObject, err := gss.DeserializeBytes(respBytes, "json", []string{}, "", false, gss.NoSkip, gss.NoLimit, respType, false, false)
 	if err != nil {
 		return err
 	}

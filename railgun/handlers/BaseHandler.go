@@ -166,7 +166,7 @@ func (h *BaseHandler) ParseBody(inputBytes []byte, format string) (interface{}, 
 
 	fmt.Println("Bytes:", string(inputBytes))
 
-	inputObject, err := gss.DeserializeBytes(inputBytes, format, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, false)
+	inputObject, err := gss.DeserializeBytes(inputBytes, format, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, false, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing body")
 	}
@@ -340,7 +340,7 @@ func (h *BaseHandler) DeserializeBytes(inputBytes []byte, inputFormat string) (i
 		return nil, errors.Wrap(err, "error getting type for input")
 	}
 
-	object, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false)
+	object, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false, false)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
 	}

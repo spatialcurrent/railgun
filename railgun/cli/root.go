@@ -79,6 +79,9 @@ func init() {
 	rootCmd.PersistentFlags().StringP("log-format", "", "text", "log format: text, properties, json, yaml, etc.")
 	rootCmd.PersistentFlags().StringP("log-compression", "", "", "the compression algorithm for the logs: none, gzip, or snappy")
 
+	// Runtime Flags
+	serveCmd.PersistentFlags().Int("runtime-max-procs", 1, "Sets the maximum number of parallel processes.  If set to zero, then sets the maximum number of parallel processes to the number of CPUs on the machine. (https://godoc.org/runtime#GOMAXPROCS).")
+
 }
 
 // initConfig reads in config file and ENV variables if set.

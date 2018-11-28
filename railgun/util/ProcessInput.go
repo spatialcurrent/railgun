@@ -27,7 +27,7 @@ func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, i
   		return "", errors.Wrap(err, "error getting type for input")
   	}
   
-  	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, inputType, verbose)
+  	inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, inputType, false, verbose)
   	if err != nil {
   		return "", errors.Wrap(err, "error deserializing input using format "+inputFormat)
   	}

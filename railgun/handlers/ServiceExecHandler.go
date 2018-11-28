@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
-	//"reflect"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -39,11 +39,13 @@ type ServiceExecHandler struct {
 
 func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+	ctx := context.WithValue(r.Context(), "handler", reflect.TypeOf(h).Elem().Name())
+
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
 	switch r.Method {
 	case "POST":
-		obj, err := h.Post(w, r, format, mux.Vars(r))
+		obj, err := h.Post(w, r.WithContext(ctx), format, mux.Vars(r))
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
@@ -71,6 +73,25 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (interface{}, error) {
+
+	ctx := r.Context()
+
+	defer func() {
+		start := ctx.Value("start").(time.Time)
+		end := time.Now()
+		profile := map[string]interface{}{
+			"start":    start.Format(time.RFC3339),
+			"end":      end.Format(time.RFC3339),
+			"duration": end.Sub(start).String(),
+		}
+		m := map[string]interface{}{
+			"request": ctx.Value("request"),
+			"handler": ctx.Value("handler"),
+			"vars":    ctx.Value("vars"),
+			"profile": profile,
+		}
+		h.SendMessage(m)
+	}()
 
 	serviceName, ok := vars["name"]
 	if !ok {
