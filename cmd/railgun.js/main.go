@@ -73,6 +73,9 @@ func Process(in interface{}, options *js.Object) interface{} {
 	outputFormat := ""
 	outputHeader := gss.NoHeader
 	outputLimit := gss.NoLimit
+
+	async := false
+
 	dfl_exp := ""
 
 	if v, ok := m["input_header"]; ok {
@@ -148,6 +151,13 @@ func Process(in interface{}, options *js.Object) interface{} {
 		}
 	}
 
+	if v, ok := m["async"]; ok {
+		switch v.(type) {
+		case bool:
+			async = v.(bool)
+		}
+	}
+
 	var ctx interface{}
 
 	switch in.(type) {
@@ -157,7 +167,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 			console.Error(errors.Wrap(err, "error geting type for input").Error())
 			return ""
 		}
-		input_object, err := gss.DeserializeString(in.(string), inputFormat, input_header, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, input_type, false)
+		input_object, err := gss.DeserializeString(in.(string), inputFormat, input_header, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, input_type, async, false)
 		if err != nil {
 			console.Error(errors.Wrap(err, "error deserializing input using format "+inputFormat).Error())
 			return ""
