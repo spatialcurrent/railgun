@@ -59,7 +59,7 @@ func (l *Logger) Info(obj interface{}) {
 
 func (l *Logger) Error(obj interface{}) {
 	if err, ok := obj.(error); ok {
-		l.infoWriter.WriteLine(gss.MustSerializeString(map[string]interface{}{"error": err.Error()}, l.errorFormat, gss.NoHeader, gss.NoLimit))
+		l.errorWriter.WriteLine(gss.MustSerializeString(map[string]interface{}{"error": err.Error()}, l.errorFormat, gss.NoHeader, gss.NoLimit))
 	} else if line, ok := obj.(string); ok {
 		l.errorWriter.WriteLine(line)
 	} else {
@@ -69,8 +69,10 @@ func (l *Logger) Error(obj interface{}) {
 
 func (l *Logger) Fatal(obj interface{}) {
 	l.infoWriter.Flush()
+	l.infoWriter.Close()
 	l.Error(obj)
 	l.errorWriter.Flush()
+	l.errorWriter.Close()
 	os.Exit(1)
 }
 
@@ -80,6 +82,7 @@ func (l *Logger) Flush() {
 }
 
 func (l *Logger) Close() {
+	l.Flush()
 	l.infoWriter.Close()
 	l.errorWriter.Close()
 }
