@@ -300,10 +300,8 @@ func serveFunction(cmd *cobra.Command, args []string) {
 
 	if gracefulShutdown {
 		go func() {
-			if verbose {
-				messages <- "* starting server with graceful shutdown"
-				messages <- "* listening on " + srv.Addr
-			}
+			messages <- map[string]interface{}{"message": "* starting server with graceful shutdown"}
+			messages <- map[string]interface{}{"message": "* listening on " + srv.Addr}
 			if err := srv.ListenAndServe(); err != nil {
 				fmt.Println(err)
 				os.Exit(1)
@@ -323,10 +321,8 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	if verbose {
-		messages <- "* starting server without graceful shutdown"
-		messages <- "* listening on " + srv.Addr
-	}
+	messages <- map[string]interface{}{"message": "starting server without graceful shutdown"}
+	messages <- map[string]interface{}{"message": "listening on " + srv.Addr}
 	logger.Fatal(srv.ListenAndServe())
 }
 
