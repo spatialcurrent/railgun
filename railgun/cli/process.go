@@ -47,7 +47,7 @@ import (
 	//rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/athenaiterator"
 	"github.com/spatialcurrent/railgun/railgun/config"
-	"github.com/spatialcurrent/railgun/railgun/logger"
+	rlogger "github.com/spatialcurrent/railgun/railgun/logger"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -426,7 +426,7 @@ func formatObject(object interface{}, format string, header []string) (string, e
 	return str, nil
 }
 
-func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputFormat string, athenaClient *athena.Athena, logger *logger.Logger, verbose bool) (*athenaiterator.AthenaIterator, error) {
+func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputFormat string, athenaClient *athena.Athena, logger *rlogger.Logger, verbose bool) (*athenaiterator.AthenaIterator, error) {
 
 	if !strings.HasPrefix(tempUri, "s3://") {
 		return nil, errors.New("temporary uri must be an S3 object")
@@ -539,10 +539,12 @@ func processFunction(cmd *cobra.Command, args []string) {
 		Output:           &config.Output{},
 		Temp:             &config.Temp{},
 		Dfl:              &config.Dfl{},
+		InfoDestination:  "",
+		InfoCompression:  "",
+		InfoFormat:       "",
 		ErrorDestination: "",
 		ErrorCompression: "",
-		LogDestination:   "",
-		LogCompression:   "",
+		ErrorFormat:      "",
 	}
 	config.LoadConfigFromViper(processConfig, v)
 
@@ -578,25 +580,33 @@ func processFunction(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	logger := logger.NewLoggerFromConfig(
-		processConfig.LogDestination,
-		processConfig.LogCompression,
-		processConfig.ErrorDestination,
-		processConfig.ErrorCompression,
-		s3_client)
+	errorWriter, err := grw.WriteToResource(processConfig.ErrorDestination, processConfig.ErrorCompression, true, s3_client)
+	if err != nil {
+		fmt.Println(errors.Wrap(err, "error creating error writer"))
+		os.Exit(1)
+	}
 
-	errorsChannel := make(chan error, 1000)
+	infoWriter, err := grw.WriteToResource(processConfig.InfoDestination, processConfig.InfoCompression, true, s3_client)
+	if err != nil {
+		errorWriter.WriteError(errors.Wrap(err, "error creating log writer"))
+		errorWriter.Close()
+		os.Exit(1)
+	}
+
+	logger := rlogger.New(infoWriter, processConfig.InfoFormat, errorWriter, processConfig.ErrorFormat)
+
+	errorsChannel := make(chan interface{}, 1000)
 	messages := make(chan interface{}, 1000)
 	logger.ListenInfo(messages, nil)
 
-	if processConfig.ErrorDestination == processConfig.LogDestination {
-		go func(errorsChannel chan error) {
+	if processConfig.ErrorDestination == processConfig.InfoDestination {
+		go func(errorsChannel chan interface{}) {
 			for err := range errorsChannel {
-				messages <- err.Error()
+				messages <- err
 			}
 		}(errorsChannel)
 	} else {
-		logger.ListenError(errorsChannel)
+		logger.ListenError(errorsChannel, nil)
 	}
 
 	processConfig.Input.Init()
@@ -1003,7 +1013,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	err := processOutput(outputString, processConfig.Output, s3_client)
+	err = processOutput(outputString, processConfig.Output, s3_client)
 	if err != nil {
 		logger.Fatal(errors.Wrap(err, "error processing output"))
 	}

@@ -15,6 +15,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/spatialcurrent/cobra"
 	"github.com/spatialcurrent/viper"
+	//"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,6 +32,7 @@ import (
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/railgun/railgun/catalog"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	rlogger "github.com/spatialcurrent/railgun/railgun/logger"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/router"
 	"github.com/spatialcurrent/railgun/railgun/util"
@@ -38,80 +40,34 @@ import (
 
 var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[]}")
 
-func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, errorWriter grw.ByteWriteCloser, logWriter grw.ByteWriteCloser, logFormat string, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, verbose bool) (*router.RailgunRouter, error) {
+func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, logger *rlogger.Logger, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, errorsChannel chan interface{}, requests chan request.Request, messages chan interface{}, verbose bool) (*router.RailgunRouter, error) {
 
-	errorsChannel := make(chan error, 10000)
-	requests := make(chan request.Request, 10000)
-	messages := make(chan interface{}, 10000)
-
-	go func(requests chan request.Request, format string, errorsChannel chan error, logRequestsTile bool, logRequestsCache bool) {
+	go func(requests chan request.Request, logRequestsTile bool, logRequestsCache bool) {
 		for r := range requests {
 			switch r.(type) {
 			case *request.TileRequest:
 				if logRequestsTile {
-					msg, err := r.Serialize(format)
-					if err != nil {
-						errorsChannel <- err
-					} else {
-						messages <- msg
-					}
+					messages <- r
 				}
 			case *request.CacheRequest:
 				if logRequestsCache {
-					msg, err := r.Serialize(format)
-					if err != nil {
-						errorsChannel <- err
-					} else {
-						messages <- msg
-					}
+					messages <- r
 				}
 			}
 		}
-	}(requests, logFormat, errorsChannel, v.GetBool("log-requests-tile"), v.GetBool("log-requests-cache"))
-
-	go func(messages chan interface{}) {
-		for message := range messages {
-			if str, ok := message.(string); ok {
-				logWriter.WriteLine(str)
-			} else if err, ok := message.(error); ok {
-				str, err := gss.SerializeString(map[string]interface{}{"type": "error", "message": err.Error()}, logFormat, gss.NoHeader, gss.NoLimit)
-				if err != nil {
-					panic(err)
-				}
-				logWriter.WriteLine(str)
-			} else {
-				str, err := gss.SerializeString(message, logFormat, gss.NoHeader, gss.NoLimit)
-				if err != nil {
-					panic(err)
-				}
-				logWriter.WriteLine(str)
-			}
-			logWriter.Flush()
-		}
-	}(messages)
+	}(requests, v.GetBool("log-requests-tile"), v.GetBool("log-requests-cache"))
 
 	errorDestination := v.GetString("error-destination")
-	logDestination := v.GetString("log-destination")
+	infoDestination := v.GetString("info-destination")
 
-	if errorDestination == logDestination {
-		go func(errorsChannel chan error) {
+	if errorDestination == infoDestination {
+		go func(errorsChannel chan interface{}) {
 			for err := range errorsChannel {
-				messages <- err.Error()
+				messages <- err
 			}
 		}(errorsChannel)
 	} else {
-		go func(errorsChannel chan error) {
-			for err := range errorsChannel {
-				switch rerr := err.(type) {
-				case *rerrors.ErrInvalidParameter:
-					errorWriter.WriteString(rerr.Error())
-				case *rerrors.ErrMissing:
-					errorWriter.WriteString(rerr.Error())
-				default:
-					errorWriter.WriteString(rerr.Error())
-				}
-			}
-		}(errorsChannel)
+		logger.ListenError(errorsChannel, nil)
 	}
 
 	awsSessionCache := gocache.New(5*time.Minute, 10*time.Minute)
@@ -226,14 +182,14 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	httpTimeoutRead := v.GetDuration("http-timeout-read")
 	httpTimeoutWrite := v.GetDuration("http-timeout-write")
 
-	// Error Flags
+	// Logging Flags
+	infoDestination := v.GetString("info-destination")
+	infoCompression := v.GetString("info-compression")
+	infoFormat := v.GetString("info-format")
 	errorDestination := v.GetString("error-destination")
 	errorCompression := v.GetString("error-compression")
+	errorFormat := v.GetString("error-format")
 
-	// Logging Flags
-	logDestination := v.GetString("log-destination")
-	logCompression := v.GetString("log-compression")
-	logFormat := v.GetString("log-format")
 	//logRequestsTile := v.GetBool("log-requests-tile")
 	//logRequestsCache := v.GetBool("log-requests-cache")
 
@@ -258,7 +214,7 @@ func serveFunction(cmd *cobra.Command, args []string) {
 
 	var s3_client *s3.S3
 
-	if strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(logDestination, "s3://") || strings.HasPrefix(catalogUri, "s3://") || strings.HasPrefix(publicKeyUri, "s3://") || strings.HasPrefix(privateKeyUri, "s3://") {
+	if strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(infoDestination, "s3://") || strings.HasPrefix(catalogUri, "s3://") || strings.HasPrefix(publicKeyUri, "s3://") || strings.HasPrefix(privateKeyUri, "s3://") {
 		aws_session, err := util.ConnectToAWS(awsAccessKeyId, awsSecretAccessKey, awsSessionToken, awsDefaultRegion)
 		if err != nil {
 			fmt.Println(errors.Wrap(err, "error connecting to AWS"))
@@ -273,73 +229,64 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	logWriter, err := grw.WriteToResource(logDestination, logCompression, true, s3_client)
+	infoWriter, err := grw.WriteToResource(infoDestination, infoCompression, true, s3_client)
 	if err != nil {
 		errorWriter.WriteError(errors.Wrap(err, "error creating log writer"))
 		errorWriter.Close()
 		os.Exit(1)
 	}
 
+	logger := rlogger.New(infoWriter, infoFormat, errorWriter, errorFormat)
+
 	railgunCatalog := catalog.NewRailgunCatalog()
 
 	err = railgunCatalog.LoadFromViper(v)
 	if err != nil {
-		errorWriter.WriteError(err)
-		errorWriter.Close()
-		os.Exit(1)
+		logger.Fatal(err)
 	}
 
+	messages := make(chan interface{}, 10000)
+	logger.ListenInfo(messages, nil)
+
 	if len(catalogUri) > 0 {
-		err := railgunCatalog.LoadFromUri(catalogUri, logWriter, errorWriter, s3_client)
+		err := railgunCatalog.LoadFromUri(catalogUri, logger, s3_client, messages)
 		if err != nil {
-			errorWriter.WriteError(err)
-			errorWriter.Close()
-			os.Exit(1)
+			logger.Fatal(err)
 		}
 	}
 
-	logWriter.Flush()
-	errorWriter.Flush()
-
 	if len(publicKeyString) == 0 && len(publicKeyUri) == 0 {
-		errorWriter.WriteError(errors.New("jwt-public-key or jwt-public-key-uri is required"))
-		errorWriter.Close()
-		os.Exit(1)
+		logger.Fatal(errors.New("jwt-public-key or jwt-public-key-uri is required"))
 	}
 
 	if len(privateKeyString) == 0 && len(privateKeyUri) == 0 {
-		errorWriter.WriteError(errors.New("jwt-private-key or jwt-private-key-uri is required"))
-		errorWriter.Close()
-		os.Exit(1)
+		logger.Fatal(errors.New("jwt-private-key or jwt-private-key-uri is required"))
 	}
 
 	publicKey, err := initPublicKey(publicKeyString, publicKeyUri, s3_client)
 	if err != nil {
-		errorWriter.WriteError(errors.Wrap(err, "error initializing public key"))
-		errorWriter.Close()
-		os.Exit(1)
+		logger.Fatal(errors.Wrap(err, "error initializing public key"))
 	}
 
 	privateKey, err := initPrivateKey(privateKeyString, privateKeyUri, s3_client)
 	if err != nil {
-		errorWriter.WriteError(errors.Wrap(err, "error initializing private key"))
-		errorWriter.Close()
-		os.Exit(1)
+		logger.Fatal(errors.Wrap(err, "error initializing private key"))
 	}
 
 	validMethods := v.GetStringArray("jwt-valid-methods")
 	if len(validMethods) == 0 {
-		errorWriter.WriteError(&rerrors.ErrMissingRequiredParameter{Name: "jwt-valid-methods"})
-		errorWriter.Close()
-		os.Exit(1)
+		logger.Fatal(&rerrors.ErrMissingRequiredParameter{Name: "jwt-valid-methods"})
 	}
 
-	handler, err := NewRouter(v, railgunCatalog, errorWriter, logWriter, logFormat, publicKey, privateKey, validMethods, verbose)
+	errorsChannel := make(chan interface{}, 10000)
+	requests := make(chan request.Request, 10000)
+
+	handler, err := NewRouter(v, railgunCatalog, logger, publicKey, privateKey, validMethods, errorsChannel, requests, messages, verbose)
 	if err != nil {
-		errorWriter.WriteString(errors.Wrap(err, "error creating new router").Error())
-		errorWriter.Close()
-		os.Exit(1)
+		logger.Fatal(errors.Wrap(err, "error creating new router"))
 	}
+
+	logger.Flush()
 
 	srv := &http.Server{
 		Addr:         address,
@@ -349,28 +296,38 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		Handler:      handler,
 	}
 
-	go func() {
-		if verbose {
-			fmt.Println("starting up server...")
-			fmt.Println("listening on " + srv.Addr)
-		}
-		if err := srv.ListenAndServe(); err != nil {
-			fmt.Println(err)
-		}
-	}()
+	gracefulShutdown := v.GetBool("http-graceful-shutdown")
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	<-c
-	errorWriter.Close()
-	logWriter.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), wait)
-	defer cancel()
-	srv.Shutdown(ctx)
-	if verbose {
-		fmt.Println("received signal to attemping graceful shutdown of server")
+	if gracefulShutdown {
+		go func() {
+			if verbose {
+				messages <- "* starting server with graceful shutdown"
+				messages <- "* listening on " + srv.Addr
+			}
+			if err := srv.ListenAndServe(); err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		}()
+
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+		<-c
+		logger.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), wait)
+		defer cancel()
+		srv.Shutdown(ctx)
+		if verbose {
+			fmt.Println("received signal to attemping graceful shutdown of server")
+		}
+		os.Exit(0)
 	}
-	os.Exit(0)
+
+	if verbose {
+		messages <- "* starting server without graceful shutdown"
+		messages <- "* listening on " + srv.Addr
+	}
+	logger.Fatal(srv.ListenAndServe())
 }
 
 // serveCmd represents the serve command
@@ -400,6 +357,7 @@ func init() {
 	serveCmd.Flags().DurationP("http-timeout-read", "", time.Second*15, "the read timeout for the http server")
 	serveCmd.Flags().DurationP("http-timeout-write", "", time.Second*15, "the write timeout for the http server")
 	serveCmd.Flags().BoolP("http-middleware-gzip", "", false, "enable GZIP middleware")
+	serveCmd.Flags().Bool("http-graceful-shutdown", false, "enable graceful shutdown")
 
 	// Cache Flags
 	serveCmd.Flags().DurationP("cache-default-expiration", "", time.Minute*5, "the default exipration for items in the cache")
@@ -441,6 +399,6 @@ func init() {
 	serveCmd.Flags().Duration("jwt-session-duration", 60*time.Minute, "duration of authenticated session")
 
 	// Tile
-	serveCmd.Flags().IntP("tile-random-delay", "", 200, "random delay for processing tiles in milliseconds")
+	serveCmd.Flags().IntP("tile-random-delay", "", 1000, "random delay for processing tiles in milliseconds")
 
 }

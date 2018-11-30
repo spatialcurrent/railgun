@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,15 +40,29 @@ type ServiceExecHandler struct {
 
 func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	ctx := context.WithValue(r.Context(), "handler", reflect.TypeOf(h).Elem().Name())
+	ctx := r.Context()
+
+	vars := mux.Vars(r)
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
+	if m, ok := ctx.Value("request").(map[string]interface{}); ok {
+		m["vars"] = vars
+		ctx = context.WithValue(ctx, "request", m)
+	}
+	ctx = context.WithValue(ctx, "handler", reflect.TypeOf(h).Elem().Name())
+
 	switch r.Method {
 	case "POST":
-		obj, err := h.Post(w, r.WithContext(ctx), format, mux.Vars(r))
+		once := &sync.Once{}
+		once.Do(func() { h.Catalog.ReadLock() })
+		defer once.Do(func() { h.Catalog.ReadUnlock() })
+		h.SendDebug("read locked for " + r.URL.String())
+		obj, err := h.Post(w, r.WithContext(ctx), format, vars)
+		once.Do(func() { h.Catalog.ReadUnlock() })
+		h.SendDebug("read unlocked for " + r.URL.String())
 		if err != nil {
-			h.Messages <- err
+			h.SendError(err)
 			err = h.RespondWithError(w, err, format)
 			if err != nil {
 				panic(err)
@@ -55,7 +70,7 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = h.RespondWithObject(w, http.StatusOK, obj, format)
 			if err != nil {
-				h.Messages <- err
+				h.SendError(err)
 				err = h.RespondWithError(w, err, format)
 				if err != nil {
 					panic(err)
@@ -87,10 +102,9 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		m := map[string]interface{}{
 			"request": ctx.Value("request"),
 			"handler": ctx.Value("handler"),
-			"vars":    ctx.Value("vars"),
 			"profile": profile,
 		}
-		h.SendMessage(m)
+		h.SendInfo(m)
 	}()
 
 	serviceName, ok := vars["name"]

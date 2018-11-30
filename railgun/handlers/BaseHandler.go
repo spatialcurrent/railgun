@@ -42,16 +42,27 @@ type BaseHandler struct {
 	Catalog         *catalog.RailgunCatalog
 	Requests        chan request.Request
 	Messages        chan interface{}
-	Errors          chan error
+	Errors          chan interface{}
 	AwsSessionCache *gocache.Cache
 	PublicKey       *rsa.PublicKey
 	PrivateKey      *rsa.PrivateKey
 	SessionDuration time.Duration
 	ValidMethods    []string
+	Debug           bool
 }
 
-func (h *BaseHandler) SendMessage(message interface{}) {
+func (h *BaseHandler) SendDebug(message interface{}) {
+	if h.Debug {
+		h.Messages <- message
+	}
+}
+
+func (h *BaseHandler) SendInfo(message interface{}) {
 	h.Messages <- message
+}
+
+func (h *BaseHandler) SendError(message interface{}) {
+	h.Errors <- message
 }
 
 func (h *BaseHandler) BuildCacheKeyDataStore(datastore string, uri string, lastModified time.Time) string {

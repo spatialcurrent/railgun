@@ -15,10 +15,12 @@ type Process struct {
 	Output           *Output
 	Temp             *Temp
 	Dfl              *Dfl
+	InfoDestination  string `viper:"info-destination"`
+	InfoCompression  string `viper:"info-compression"`
+	InfoFormat       string `viper:"info-format"`
 	ErrorDestination string `viper:"error-destination"`
 	ErrorCompression string `viper:"error-compression"`
-	LogDestination   string `viper:"log-destination"`
-	LogCompression   string `viper:"log-compression"`
+	ErrorFormat      string `viper:"error-format"`
 }
 
 func (p *Process) AWSSessionOptions() session.Options {
@@ -34,7 +36,7 @@ func (p *Process) HasAthenaStoredQuery() bool {
 }
 
 func (p *Process) HasS3Bucket() bool {
-	return (p.Input != nil && p.Input.IsS3Bucket()) || (p.Temp != nil && p.Temp.IsS3Bucket()) || (p.Output != nil && p.Output.IsS3Bucket()) || strings.HasPrefix(p.ErrorDestination, "s3://") || strings.HasPrefix(p.LogDestination, "s3://")
+	return (p.Input != nil && p.Input.IsS3Bucket()) || (p.Temp != nil && p.Temp.IsS3Bucket()) || (p.Output != nil && p.Output.IsS3Bucket()) || strings.HasPrefix(p.InfoDestination, "s3://") || strings.HasPrefix(p.ErrorDestination, "s3://")
 }
 
 func (p *Process) InputOptions() gss.Options {
@@ -62,9 +64,11 @@ func (p *Process) Map() map[string]interface{} {
 	if p.Dfl != nil {
 		m["Dfl"] = p.Dfl.Map()
 	}
+	m["InfoDestination"] = p.InfoDestination
+	m["InfoCompression"] = p.InfoCompression
+	m["InfoFormat"] = p.InfoFormat
 	m["ErrorDestination"] = p.ErrorDestination
 	m["ErrorCompression"] = p.ErrorCompression
-	m["LogDestination"] = p.LogDestination
-	m["LogCompression"] = p.LogCompression
+	m["ErrorFormat"] = p.ErrorFormat
 	return m
 }

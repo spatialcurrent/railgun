@@ -8,14 +8,17 @@
 package catalog
 
 import (
-	"github.com/spatialcurrent/railgun/railgun/core"
-	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"reflect"
 	"sync"
 )
 
+import (
+	"github.com/spatialcurrent/railgun/railgun/core"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+)
+
 type Catalog struct {
-	mutex   *sync.Mutex
+	mutex   *sync.RWMutex
 	objects map[string]interface{}
 	indices map[string]map[string]int
 }
@@ -23,7 +26,7 @@ type Catalog struct {
 func NewCatalog() *Catalog {
 
 	catalog := &Catalog{
-		mutex:   &sync.Mutex{},
+		mutex:   &sync.RWMutex{},
 		objects: map[string]interface{}{},
 		indices: map[string]map[string]int{},
 	}
@@ -31,11 +34,19 @@ func NewCatalog() *Catalog {
 	return catalog
 }
 
-func (c *Catalog) Lock() {
+func (c *Catalog) ReadLock() {
+	c.mutex.RLock()
+}
+
+func (c *Catalog) WriteLock() {
 	c.mutex.Lock()
 }
 
-func (c *Catalog) Unlock() {
+func (c *Catalog) ReadUnlock() {
+	c.mutex.RUnlock()
+}
+
+func (c *Catalog) WriteUnlock() {
 	c.mutex.Unlock()
 }
 
@@ -148,8 +159,8 @@ func (c *Catalog) Dump() map[string]interface{} {
 }
 
 func (c *Catalog) SafeDump() map[string]interface{} {
-	c.Lock()
+	c.ReadLock()
 	dump := c.Dump()
-	c.Unlock()
+	c.ReadUnlock()
 	return dump
 }

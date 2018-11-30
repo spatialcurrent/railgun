@@ -51,29 +51,41 @@ type ServiceTileHandler struct {
 
 func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	ctx := context.WithValue(r.Context(), "handler", reflect.TypeOf(h).Elem().Name())
+	ctx := r.Context()
+
+	vars := mux.Vars(r)
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
+	if m, ok := ctx.Value("request").(map[string]interface{}); ok {
+		m["vars"] = vars
+		ctx = context.WithValue(ctx, "request", m)
+	}
+	ctx = context.WithValue(ctx, "handler", reflect.TypeOf(h).Elem().Name())
+
 	switch r.Method {
 	case "GET":
-		h.Catalog.Lock()
-		obj, err := h.Get(w, r.WithContext(ctx), format)
-		h.Catalog.Unlock()
+		once := &sync.Once{}
+		once.Do(func() { h.Catalog.ReadLock() })
+		defer once.Do(func() { h.Catalog.ReadUnlock() })
+		h.SendDebug("read locked for " + r.URL.String())
+		obj, err := h.Get(w, r.WithContext(ctx), format, vars)
+		once.Do(func() { h.Catalog.ReadUnlock() })
+		h.SendDebug("read unlocked for " + r.URL.String())
 		if err != nil {
-			h.Messages <- err
+			h.SendError(err)
 			err = h.RespondWithError(w, err, format)
 			if err != nil {
-				h.Messages <- err
+				h.SendError(err)
 				panic(err)
 			}
 		} else {
 			err = h.RespondWithObject(w, http.StatusOK, obj, format)
 			if err != nil {
-				h.Messages <- err
+				h.SendInfo(err)
 				err = h.RespondWithError(w, err, format)
 				if err != nil {
-					h.Messages <- err
+					h.SendError(err)
 					panic(err)
 				}
 			}
@@ -81,19 +93,16 @@ func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		err := h.RespondWithNotImplemented(w, format)
 		if err != nil {
-			h.Messages <- err
+			h.SendError(err)
 			panic(err)
 		}
 	}
 
 }
 
-func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
+func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (object interface{}, err error) {
 
-	vars := mux.Vars(r)
-	ctx := struct{ Context context.Context }{
-		Context: context.WithValue(r.Context(), "vars", vars),
-	}
+	ctx := struct{ Context context.Context }{Context: r.Context()}
 
 	// Randomly sleep to increase cache performance.
 	inside := true
@@ -123,21 +132,23 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 			profile["deserialize"] = d
 		}
 		m := map[string]interface{}{
-			"request":   ctx.Context.Value("request"),
-			"handler":   ctx.Context.Value("handler"),
-			"vars":      ctx.Context.Value("vars"),
-			"service":   ctx.Context.Value("service"),
-			"datastore": ctx.Context.Value("datastore"),
-			"process":   ctx.Context.Value("process"),
-			"profile":   profile,
+			"request": ctx.Context.Value("request"),
+			"handler": ctx.Context.Value("handler"),
+			"service": ctx.Context.Value("service"),
+			"process": ctx.Context.Value("process"),
+			"profile": profile,
 			"cache": map[string]interface{}{
 				"hit": hit,
 			},
 			"inside": inside,
 		}
-		if uri := ctx.Context.Value("uri"); uri != nil {
-			m["uri"] = uri
+		datastore := map[string]interface{}{
+			"name": ctx.Context.Value("datastore"),
 		}
+		if uri := ctx.Context.Value("uri"); uri != nil {
+			datastore["uri"] = uri
+		}
+		m["datastore"] = datastore
 		s3 := map[string]interface{}{}
 		if bucket := ctx.Context.Value("bucket"); bucket != nil {
 			s3["bucket"] = bucket
@@ -153,7 +164,10 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 				m["error"] = err.Error()
 			}
 		}
-		h.SendMessage(m)
+		if err != nil {
+			m["error"] = err.Error()
+		}
+		h.SendInfo(m)
 	}()
 
 	qs := request.NewQueryString(r)
@@ -277,18 +291,27 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 		go func() {
-			headObjectOutput, err = s3Client.HeadObject(&s3.HeadObjectInput{
-				Bucket: aws.String(bucket),
-				Key:    aws.String(key),
-			})
+			for i := 0; i < 3; i++ {
+				headObjectOutput, err = s3Client.HeadObjectWithContext(ctx.Context, &s3.HeadObjectInput{
+					Bucket: aws.String(bucket),
+					Key:    aws.String(key),
+				})
+				if err != nil {
+					h.SendError(map[string]interface{}{"level": "warn", "message": err.Error()})
+				} else if headObjectOutput != nil {
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
 			wg.Done()
 		}()
 		wg.Wait()
+
 		ctx.Context = context.WithValue(ctx.Context, "profile_head", time.Now().Sub(start).String())
 		if err != nil {
-			err := errors.Wrap(err, fmt.Sprintf("error heading S3 object at bucket %s and key %s", bucket, key))
+			h.SendError(errors.Wrap(err, fmt.Sprintf("error heading S3 object at bucket %s and key %s", bucket, key)))
 			ctx.Context = context.WithValue(ctx.Context, "error", err)
-			return nil, err
+			return emptyFeatureCollection, nil
 		}
 
 		cacheKeyDataStore = h.BuildCacheKeyDataStore(
@@ -380,53 +403,9 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		ctx.Context = context.WithValue(ctx.Context, "profile_read", time.Now().Sub(start).String())
 	}
 
-	/*
-
-		if inputObject == nil {
-
-			start := time.Now()
-			var err error
-			inputBytes := make([]byte, 0)
-			wg := &sync.WaitGroup{}
-			wg.Add(1)
-			if inputReader != nil {
-				go func() {
-					inputBytes, err = inputReader.ReadAllAndClose()
-					wg.Done()
-				}()
-			} else {
-				go func() {
-					inputBytes, err = grw.ReadAllAndClose(inputUri, service.DataStore.Compression, s3Client)
-					wg.Done()
-				}()
-			}
-			wg.Wait()
-			ctx.Context = context.WithValue(ctx.Context, "profile_read", time.Now().Sub(start).String())
-			if err != nil {
-				err := errors.Wrap(err, "error reading from resource at uri "+inputUri)
-				ctx.Context = context.WithValue(ctx.Context, "error", err)
-				return nil, err
-			}
-
-			start = time.Now()
-			object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
-			if err != nil {
-				err := errors.Wrap(err, "error deserializing input")
-				ctx.Context = context.WithValue(ctx.Context, "error", err)
-				return nil, err
-			}
-			inputObject = object
-			ctx.Context = context.WithValue(ctx.Context, "profile_deserialize", time.Now().Sub(start).String())
-		}
-
-
-	*/
-
 	go h.Cache.Set(cacheKeyDataStore, inputObject, gocache.DefaultExpiration) // save variables to cache outside of request/response thread
 
-	variables, outputObject, err := p.Evaluate(
-		variables,
-		inputObject)
+	variables, outputObject, err := p.Evaluate(variables, inputObject)
 	if err != nil {
 		err := errors.Wrap(err, "error processing features")
 		ctx.Context = context.WithValue(ctx.Context, "error", err)

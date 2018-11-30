@@ -73,11 +73,12 @@ func init() {
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "print verbose output to stdout")
 
 	// Logging Flags
-	rootCmd.PersistentFlags().StringP("error-destination", "", "stderr", "destination for errors as a uri")
-	rootCmd.PersistentFlags().StringP("error-compression", "", "", "the compression algorithm for the errors: none, gzip, or snappy")
-	rootCmd.PersistentFlags().StringP("log-destination", "", "stdout", "destination for logs as a uri")
-	rootCmd.PersistentFlags().StringP("log-format", "", "text", "log format: text, properties, json, yaml, etc.")
-	rootCmd.PersistentFlags().StringP("log-compression", "", "", "the compression algorithm for the logs: none, gzip, or snappy")
+	rootCmd.PersistentFlags().String("info-destination", "stdout", "destination for info logs as a uri")
+	rootCmd.PersistentFlags().String("info-format", "text", "info log format: text, properties, json, yaml, etc.")
+	rootCmd.PersistentFlags().String("info-compression", "", "the compression algorithm for the info logs: none, gzip, or snappy")
+	rootCmd.PersistentFlags().String("error-destination", "stderr", "destination for errors as a uri")
+	rootCmd.PersistentFlags().String("error-compression", "", "the compression algorithm for the errors: none, gzip, or snappy")
+	rootCmd.PersistentFlags().String("error-format", "text", "error log format: text, properties, json, yaml, etc.")
 
 	// Runtime Flags
 	serveCmd.PersistentFlags().Int("runtime-max-procs", 1, "Sets the maximum number of parallel processes.  If set to zero, then sets the maximum number of parallel processes to the number of CPUs on the machine. (https://godoc.org/runtime#GOMAXPROCS).")

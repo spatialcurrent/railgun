@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 import (
@@ -36,9 +37,11 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case "GET":
-		h.Catalog.Lock()
+		once := &sync.Once{}
+		once.Do(func() { h.Catalog.ReadLock() })
+		defer once.Do(func() { h.Catalog.ReadUnlock() })
 		obj, err := h.Get(w, r, format)
-		h.Catalog.Unlock()
+		once.Do(func() { h.Catalog.ReadUnlock() })
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
@@ -56,9 +59,11 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "POST":
-		h.Catalog.Lock()
+		once := &sync.Once{}
+		once.Do(func() { h.Catalog.WriteLock() })
+		defer once.Do(func() { h.Catalog.WriteUnlock() })
 		obj, err := h.Post(w, r, format)
-		h.Catalog.Unlock()
+		once.Do(func() { h.Catalog.WriteUnlock() })
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
@@ -76,9 +81,11 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "DELETE":
-		h.Catalog.Lock()
+		once := &sync.Once{}
+		once.Do(func() { h.Catalog.WriteLock() })
+		defer once.Do(func() { h.Catalog.WriteUnlock() })
 		obj, err := h.Delete(w, r, format)
-		h.Catalog.Unlock()
+		once.Do(func() { h.Catalog.WriteUnlock() })
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)

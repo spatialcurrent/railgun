@@ -4,6 +4,12 @@ import (
 	"compress/gzip"
 	"crypto/rsa"
 	"fmt"
+	"reflect"
+	"strings"
+	"time"
+)
+
+import (
 	"github.com/NYTimes/gziphandler"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/spatialcurrent/go-adaptive-functions/af"
@@ -13,9 +19,6 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/handlers"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/viper"
-	"reflect"
-	"strings"
-	"time"
 )
 
 type RailgunRouter struct {
@@ -26,9 +29,10 @@ type RailgunRouter struct {
 	PrivateKey      *rsa.PrivateKey
 	ValidMethods    []string
 	SessionDuration time.Duration
+	Debug           bool
 }
 
-func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, requests chan request.Request, messages chan interface{}, errors chan error, awsSessionCache *gocache.Cache, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string) *RailgunRouter {
+func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, requests chan request.Request, messages chan interface{}, errors chan interface{}, awsSessionCache *gocache.Cache, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string) *RailgunRouter {
 
 	r := &RailgunRouter{
 		Viper:           v,
@@ -38,12 +42,37 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 		PrivateKey:      privateKey,
 		ValidMethods:    validMethods,
 		SessionDuration: v.GetDuration("jwt-session-duration"),
+		Debug:           v.GetBool("verbose"),
 	}
 
-	if v.GetBool("http-middleware-gzip") {
-		r.Use(gziphandler.MustNewGzipLevelHandler(gzip.DefaultCompression))
+	messages <- map[string]interface{}{
+		"init": map[string]interface{}{
+			"middleware": map[string]interface{}{"name": "debug", "enabled": true},
+		},
 	}
 	r.Use(DebugMiddleware(messages))
+
+	messages <- map[string]interface{}{
+		"init": map[string]interface{}{
+			"middleware": map[string]interface{}{"name": "recover", "enabled": true},
+		},
+	}
+	r.Use(RecoverMiddleware(errors))
+
+	if v.GetBool("http-middleware-gzip") {
+		messages <- map[string]interface{}{
+			"init": map[string]interface{}{
+				"middleware": map[string]interface{}{"name": "gzip", "enabled": true},
+			},
+		}
+		r.Use(gziphandler.MustNewGzipLevelHandler(gzip.DefaultCompression))
+	}
+
+	messages <- map[string]interface{}{
+		"init": map[string]interface{}{
+			"middleware": map[string]interface{}{"name": "cors", "enabled": true},
+		},
+	}
 	r.Use(CorsMiddleware(v.GetString("cors-origin"), v.GetString("cors-credentials")))
 
 	r.AddHomeHandler("home", "/")
@@ -150,6 +179,7 @@ func (r *RailgunRouter) NewBaseHandler() *handlers.BaseHandler {
 		PrivateKey:      r.PrivateKey,
 		ValidMethods:    r.ValidMethods,
 		SessionDuration: r.SessionDuration,
+		Debug:           r.Debug,
 	}
 }
 
@@ -162,7 +192,11 @@ func (r *RailgunRouter) AddObjectHandler(name string, path string, object interf
 
 func (r *RailgunRouter) AddGroupHandler(name string, path string, t reflect.Type) {
 
-	fmt.Println("* adding group handler " + name + " at path " + path)
+	r.Messages <- map[string]interface{}{
+		"init": map[string]interface{}{
+			"handler": map[string]interface{}{"name": name, "path": path},
+		},
+	}
 
 	r.Methods("GET", "POST", "PUT", "OPTIONS").Name(name).Path(path).Handler(&handlers.GroupHandler{
 		Type:        t,
@@ -171,6 +205,13 @@ func (r *RailgunRouter) AddGroupHandler(name string, path string, t reflect.Type
 }
 
 func (r *RailgunRouter) AddItemHandler(name string, path string, t reflect.Type, singular string, plural string) {
+
+	r.Messages <- map[string]interface{}{
+		"init": map[string]interface{}{
+			"handler": map[string]interface{}{"name": name, "path": path},
+		},
+	}
+
 	r.Methods("GET", "POST", "OPTIONS", "DELETE").Name(name).Path(path).Handler(&handlers.ItemHandler{
 		Singular:    singular,
 		Plural:      plural,

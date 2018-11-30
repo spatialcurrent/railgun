@@ -8,7 +8,15 @@
 package handlers
 
 import (
+  "context"
 	"fmt"
+	"net/http"
+	"reflect"
+	"strings"
+	"sync"
+)
+
+import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
@@ -18,14 +26,9 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/geo"
-	//"github.com/spatialcurrent/railgun/railgun/img"
-	//"github.com/spatialcurrent/railgun/railgun/named"
 	"github.com/spatialcurrent/railgun/railgun/pipeline"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	//"image/color"
-	"net/http"
-	"strings"
 )
 
 var emptyFeatureCollectionBytes = []byte("{\"type\":\"FeatureCollection\",\"features\":[],\"numberOfFeatures\":0}")
@@ -50,13 +53,27 @@ type LayerTileHandler struct {
 
 func (h *LayerTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	vars := mux.Vars(r)
+
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
+
+	if m, ok := ctx.Value("request").(map[string]interface{}); ok {
+		m["vars"] = vars
+		ctx = context.WithValue(ctx, "request", m)
+	}
+	ctx = context.WithValue(ctx, "handler", reflect.TypeOf(h).Elem().Name())
 
 	switch r.Method {
 	case "GET":
-		h.Catalog.Lock()
-		obj, err := h.Get(w, r, format)
-		h.Catalog.Unlock()
+		once := &sync.Once{}
+		once.Do(func() { h.Catalog.ReadLock() })
+		defer once.Do(func() { h.Catalog.ReadUnlock() })
+		h.SendDebug("read locked for " + r.URL.String())
+		obj, err := h.Get(w, r.WithContext(ctx), format, vars)
+		once.Do(func() { h.Catalog.ReadUnlock() })
+		h.SendDebug("read unlocked for " + r.URL.String())
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
@@ -82,9 +99,8 @@ func (h *LayerTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *LayerTileHandler) Get(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
+func (h *LayerTileHandler) Get(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (interface{}, error) {
 
-	vars := mux.Vars(r)
 	qs := request.NewQueryString(r)
 
 	layerName, ok := vars["name"]

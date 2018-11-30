@@ -12,6 +12,10 @@ import (
 	"net/http"
 )
 
+import (
+//"github.com/pkg/errors"
+)
+
 type HomeHandler struct {
 	*BaseHandler
 }
@@ -81,7 +85,7 @@ func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
             maskLayer.getSource().setUrl(maskUrl);
             maskLayer.getSource().refresh();
             
-            let vectorUrl = createVectorUrl(
+            let vectorUrl = url.searchParams.get("url") || createVectorUrl(
               "workout_geojson",
               document.getElementById("dfl").value,
               url.searchParams.get("limit"));
@@ -170,7 +174,7 @@ func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
             "amenities",
             url.searchParams.get("dfl"));
           
-          var vectorUrl = createVectorUrl(
+          var vectorUrl = url.searchParams.get("url") || createVectorUrl(
             "workout_geojson",
             url.searchParams.get("dfl"),
             url.searchParams.get("limit"));

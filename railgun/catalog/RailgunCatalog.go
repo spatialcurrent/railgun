@@ -19,6 +19,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/cache"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	rlogger "github.com/spatialcurrent/railgun/railgun/logger"
 	"github.com/spatialcurrent/railgun/railgun/parser"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"github.com/spatialcurrent/viper"
@@ -37,7 +38,7 @@ func NewRailgunCatalog() *RailgunCatalog {
 
 	catalog := &RailgunCatalog{
 		Catalog: &Catalog{
-			mutex:   &sync.Mutex{},
+			mutex:   &sync.RWMutex{},
 			objects: map[string]interface{}{},
 			indices: map[string]map[string]int{},
 		},
@@ -528,9 +529,9 @@ func (c *RailgunCatalog) ListWorkflows() []*core.Workflow {
 	return c.Catalog.List(core.WorkflowType).([]*core.Workflow)
 }
 
-func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, errorWriter grw.ByteWriteCloser, s3_client *s3.S3) error {
+func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_client *s3.S3, messages chan interface{}) error {
 
-	logWriter.WriteLine(fmt.Sprintf("* loading catalog from %s", uri))
+	//logger.Info(fmt.Sprintf("* loading catalog from %s", uri))
 
 	raw, err := func(uri string) (interface{}, error) {
 
@@ -558,7 +559,7 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 			return nil, nil
 		}
 
-		logWriter.WriteLine(fmt.Sprintf("* catalog is %d bytes", len(inputBytes)))
+		//logger.Info(fmt.Sprintf("* catalog is %d bytes", len(inputBytes)))
 
 		inputType, err := gss.GetType(inputBytes, format)
 		if err != nil {
@@ -579,14 +580,14 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 	}
 
 	if raw == nil {
-		logWriter.WriteLine(fmt.Sprint("* catalog was empty"))
+		logger.Info("* catalog was empty")
 		return nil
 	}
 
 	if t := reflect.TypeOf(raw); t.Kind() == reflect.Map {
 		v := reflect.ValueOf(raw)
 
-		logWriter.WriteLine(fmt.Sprintf("* catalog has keys %v", v.MapKeys()))
+		//logger.Info(fmt.Sprintf("* catalog has keys %v", v.MapKeys()))
 
 		key := "Workspace"
 		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
@@ -598,11 +599,16 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 					m := listValue.Index(i).Interface()
 					obj, err := c.ParseWorkspace(m)
 					if err != nil {
-						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading workspace"))
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading workspace"))
+						logger.Error(err)
 						continue
 					}
 					c.Add(obj)
-					logWriter.WriteLine("* loaded workspace with name " + obj.Name)
+					messages <- map[string]interface{}{
+						"init": map[string]interface{}{
+							"workspace": map[string]interface{}{"name": obj.Name},
+						},
+					}
 				}
 			}
 		}
@@ -617,11 +623,16 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 					m := listValue.Index(i).Interface()
 					obj, err := c.ParseDataStore(m)
 					if err != nil {
-						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading data store"))
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading data store"))
+						logger.Error(err)
 						continue
 					}
 					c.Add(obj)
-					logWriter.WriteLine("* loaded data store with name " + obj.Name)
+					messages <- map[string]interface{}{
+						"init": map[string]interface{}{
+							"datastore": map[string]interface{}{"name": obj.Name},
+						},
+					}
 				}
 			}
 		}
@@ -636,11 +647,16 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 					m := listValue.Index(i).Interface()
 					obj, err := c.ParseLayer(m)
 					if err != nil {
-						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading layer"))
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading layer"))
+						logger.Error(err)
 						continue
 					}
 					c.Add(obj)
-					logWriter.WriteLine("* loaded layer with name " + obj.Name)
+					messages <- map[string]interface{}{
+						"init": map[string]interface{}{
+							"layer": map[string]interface{}{"name": obj.Name},
+						},
+					}
 				}
 			}
 		}
@@ -655,12 +671,16 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 					m := listValue.Index(i).Interface()
 					obj, err := c.ParseProcess(m)
 					if err != nil {
-						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading process"))
-						errorWriter.WriteError(err)
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading process"))
+						logger.Error(err)
 						continue
 					}
 					c.Add(obj)
-					logWriter.WriteLine("* loaded process with name " + obj.Name)
+					messages <- map[string]interface{}{
+						"init": map[string]interface{}{
+							"process": map[string]interface{}{"name": obj.Name},
+						},
+					}
 				}
 			}
 		}
@@ -675,12 +695,16 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 					m := listValue.Index(i).Interface()
 					obj, err := c.ParseService(m)
 					if err != nil {
-						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading service"))
-						errorWriter.WriteError(err)
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading service"))
+						logger.Error(err)
 						continue
 					}
 					c.Add(obj)
-					logWriter.WriteLine("* loaded service with name " + obj.Name)
+					messages <- map[string]interface{}{
+						"init": map[string]interface{}{
+							"service": map[string]interface{}{"name": obj.Name},
+						},
+					}
 				}
 			}
 		}
@@ -695,11 +719,16 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 					m := listValue.Index(i).Interface()
 					obj, err := c.ParseJob(m)
 					if err != nil {
-						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading job"))
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading job"))
+						logger.Error(err)
 						continue
 					}
 					c.Add(obj)
-					logWriter.WriteLine("* loaded job with name " + obj.Name)
+					messages <- map[string]interface{}{
+						"init": map[string]interface{}{
+							"job": map[string]interface{}{"name": obj.Name},
+						},
+					}
 				}
 			}
 		}
@@ -714,12 +743,16 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logWriter grw.ByteWriteCloser, 
 					m := listValue.Index(i).Interface()
 					obj, err := c.ParseWorkflow(m)
 					if err != nil {
-						errorWriter.WriteError(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading workflow"))
-						errorWriter.WriteError(err)
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading workflow"))
+						logger.Error(err)
 						continue
 					}
 					c.Add(obj)
-					logWriter.WriteLine("* loaded workflow with name " + obj.Name)
+					messages <- map[string]interface{}{
+						"init": map[string]interface{}{
+							"workflow": map[string]interface{}{"name": obj.Name},
+						},
+					}
 				}
 			}
 		}

@@ -9,15 +9,19 @@ package handlers
 
 import (
 	//"fmt"
+	"io/ioutil"
+	"net/http"
+	"reflect"
+	"strings"
+	"sync"
+)
+
+import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	"io/ioutil"
-	"net/http"
-	"reflect"
-	"strings"
 )
 
 type GroupHandler struct {
@@ -31,9 +35,11 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case "GET":
-		h.Catalog.Lock()
+		once := &sync.Once{}
+		once.Do(func() { h.Catalog.ReadLock() })
+		defer once.Do(func() { h.Catalog.ReadUnlock() })
 		obj, err := h.Get(w, r, format)
-		h.Catalog.Unlock()
+		once.Do(func() { h.Catalog.ReadUnlock() })
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
@@ -51,9 +57,11 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "POST":
-		h.Catalog.Lock()
+		once := &sync.Once{}
+		once.Do(func() { h.Catalog.WriteLock() })
+		defer once.Do(func() { h.Catalog.WriteUnlock() })
 		obj, err := h.Post(w, r, format)
-		h.Catalog.Unlock()
+		once.Do(func() { h.Catalog.WriteUnlock() })
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
