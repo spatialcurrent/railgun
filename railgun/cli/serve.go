@@ -300,8 +300,8 @@ func serveFunction(cmd *cobra.Command, args []string) {
 
 	if gracefulShutdown {
 		go func() {
-			messages <- map[string]interface{}{"message": "* starting server with graceful shutdown"}
-			messages <- map[string]interface{}{"message": "* listening on " + srv.Addr}
+			messages <- map[string]interface{}{"message": "starting server with graceful shutdown"}
+			messages <- map[string]interface{}{"message": "listening on " + srv.Addr}
 			if err := srv.ListenAndServe(); err != nil {
 				fmt.Println(err)
 				os.Exit(1)
@@ -315,9 +315,7 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithTimeout(context.Background(), wait)
 		defer cancel()
 		srv.Shutdown(ctx)
-		if verbose {
-			fmt.Println("received signal to attemping graceful shutdown of server")
-		}
+		fmt.Println("received signal for graceful shutdown of server")
 		os.Exit(0)
 	}
 
@@ -352,7 +350,10 @@ func init() {
 	serveCmd.Flags().DurationP("http-timeout-idle", "", time.Second*60, "the idle timeout for the http server")
 	serveCmd.Flags().DurationP("http-timeout-read", "", time.Second*15, "the read timeout for the http server")
 	serveCmd.Flags().DurationP("http-timeout-write", "", time.Second*15, "the write timeout for the http server")
-	serveCmd.Flags().BoolP("http-middleware-gzip", "", false, "enable GZIP middleware")
+	serveCmd.Flags().Bool("http-middleware-debug", false, "enable debug middleware")
+	serveCmd.Flags().Bool("http-middleware-recover", false, "enable recovery middleware")
+	serveCmd.Flags().Bool("http-middleware-gzip", false, "enable gzip middleware")
+	serveCmd.Flags().Bool("http-middleware-cors", false, "enable CORS middleware")
 	serveCmd.Flags().Bool("http-graceful-shutdown", false, "enable graceful shutdown")
 
 	// Cache Flags

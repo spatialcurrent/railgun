@@ -114,60 +114,62 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	}
 
 	defer func() {
-		start := ctx.Context.Value("start").(time.Time)
-		end := time.Now()
-		profile := map[string]interface{}{
-			"start":    start.Format(time.RFC3339),
-			"delay":    delay.String(),
-			"end":      end.Format(time.RFC3339),
-			"duration": end.Sub(start).String(),
-		}
-		if d := ctx.Context.Value("profile_head"); d != nil {
-			profile["head"] = d
-		}
-		if d := ctx.Context.Value("profile_read"); d != nil {
-			profile["read"] = d
-		}
-		if d := ctx.Context.Value("profile_deserialize"); d != nil {
-			profile["deserialize"] = d
-		}
-		m := map[string]interface{}{
-			"request": ctx.Context.Value("request"),
-			"handler": ctx.Context.Value("handler"),
-			"service": ctx.Context.Value("service"),
-			"process": ctx.Context.Value("process"),
-			"profile": profile,
-			"cache": map[string]interface{}{
-				"hit": hit,
-			},
-			"inside": inside,
-		}
-		datastore := map[string]interface{}{
-			"name": ctx.Context.Value("datastore"),
-		}
-		if uri := ctx.Context.Value("uri"); uri != nil {
-			datastore["uri"] = uri
-		}
-		m["datastore"] = datastore
-		s3 := map[string]interface{}{}
-		if bucket := ctx.Context.Value("bucket"); bucket != nil {
-			s3["bucket"] = bucket
-		}
-		if key := ctx.Context.Value("key"); key != nil {
-			s3["key"] = key
-		}
-		if len(s3) > 0 {
-			m["s3"] = s3
-		}
-		if v := ctx.Context.Value("error"); v != nil {
-			if err, ok := v.(error); ok {
+		ctx.Context.Value("log").(*sync.Once).Do(func() {
+			start := ctx.Context.Value("start").(time.Time)
+			end := time.Now()
+			profile := map[string]interface{}{
+				"start":    start.Format(time.RFC3339),
+				"delay":    delay.String(),
+				"end":      end.Format(time.RFC3339),
+				"duration": end.Sub(start).String(),
+			}
+			if d := ctx.Context.Value("profile_head"); d != nil {
+				profile["head"] = d
+			}
+			if d := ctx.Context.Value("profile_read"); d != nil {
+				profile["read"] = d
+			}
+			if d := ctx.Context.Value("profile_deserialize"); d != nil {
+				profile["deserialize"] = d
+			}
+			m := map[string]interface{}{
+				"request": ctx.Context.Value("request"),
+				"handler": ctx.Context.Value("handler"),
+				"service": ctx.Context.Value("service"),
+				"process": ctx.Context.Value("process"),
+				"profile": profile,
+				"cache": map[string]interface{}{
+					"hit": hit,
+				},
+				"inside": inside,
+			}
+			datastore := map[string]interface{}{
+				"name": ctx.Context.Value("datastore"),
+			}
+			if uri := ctx.Context.Value("uri"); uri != nil {
+				datastore["uri"] = uri
+			}
+			m["datastore"] = datastore
+			s3 := map[string]interface{}{}
+			if bucket := ctx.Context.Value("bucket"); bucket != nil {
+				s3["bucket"] = bucket
+			}
+			if key := ctx.Context.Value("key"); key != nil {
+				s3["key"] = key
+			}
+			if len(s3) > 0 {
+				m["s3"] = s3
+			}
+			if v := ctx.Context.Value("error"); v != nil {
+				if err, ok := v.(error); ok {
+					m["error"] = err.Error()
+				}
+			}
+			if err != nil {
 				m["error"] = err.Error()
 			}
-		}
-		if err != nil {
-			m["error"] = err.Error()
-		}
-		h.SendInfo(m)
+			h.SendInfo(m)
+		})
 	}()
 
 	qs := request.NewQueryString(r)

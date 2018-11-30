@@ -45,19 +45,23 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 		Debug:           v.GetBool("verbose"),
 	}
 
-	messages <- map[string]interface{}{
-		"init": map[string]interface{}{
-			"middleware": map[string]interface{}{"name": "debug", "enabled": true},
-		},
+	if v.GetBool("http-middleware-debug") {
+		messages <- map[string]interface{}{
+			"init": map[string]interface{}{
+				"middleware": map[string]interface{}{"name": "debug", "enabled": true},
+			},
+		}
+		r.Use(DebugMiddleware(messages))
 	}
-	r.Use(DebugMiddleware(messages))
 
-	messages <- map[string]interface{}{
-		"init": map[string]interface{}{
-			"middleware": map[string]interface{}{"name": "recover", "enabled": true},
-		},
+	if v.GetBool("http-middleware-recover") {
+		messages <- map[string]interface{}{
+			"init": map[string]interface{}{
+				"middleware": map[string]interface{}{"name": "recover", "enabled": true},
+			},
+		}
+		r.Use(RecoverMiddleware(errors))
 	}
-	r.Use(RecoverMiddleware(errors))
 
 	if v.GetBool("http-middleware-gzip") {
 		messages <- map[string]interface{}{
@@ -68,12 +72,14 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 		r.Use(gziphandler.MustNewGzipLevelHandler(gzip.DefaultCompression))
 	}
 
-	messages <- map[string]interface{}{
-		"init": map[string]interface{}{
-			"middleware": map[string]interface{}{"name": "cors", "enabled": true},
-		},
+	if v.GetBool("http-middleware-cors") {
+		messages <- map[string]interface{}{
+			"init": map[string]interface{}{
+				"middleware": map[string]interface{}{"name": "cors", "enabled": true},
+			},
+		}
+		r.Use(CorsMiddleware(v.GetString("cors-origin"), v.GetString("cors-credentials")))
 	}
-	r.Use(CorsMiddleware(v.GetString("cors-origin"), v.GetString("cors-credentials")))
 
 	r.AddHomeHandler("home", "/")
 
