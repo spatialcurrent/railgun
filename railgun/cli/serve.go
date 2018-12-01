@@ -209,9 +209,6 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	privateKeyString := v.GetString("jwt-private-key")
 	privateKeyUri := v.GetString("jwt-private-key-uri")
 
-	// use StringArray since we don't want to split on comma
-	wait := v.GetDuration("wait")
-
 	var s3_client *s3.S3
 
 	if strings.HasPrefix(errorDestination, "s3://") || strings.HasPrefix(infoDestination, "s3://") || strings.HasPrefix(catalogUri, "s3://") || strings.HasPrefix(publicKeyUri, "s3://") || strings.HasPrefix(privateKeyUri, "s3://") {
@@ -286,7 +283,17 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		logger.Fatal(errors.Wrap(err, "error creating new router"))
 	}
 
-	logger.Flush()
+	gracefulShutdown := v.GetBool("http-graceful-shutdown")
+	gracefulShutdownWait := v.GetDuration("http-graceful-shutdown-wait")
+
+	messages <- map[string]interface{}{"server": map[string]interface{}{
+		"address":              address,
+		"httpTimeoutIdle":      httpTimeoutIdle,
+		"httpTimeoutRead":      httpTimeoutRead,
+		"httpTimeoutWrite":     httpTimeoutWrite,
+		"gracefulShutdown":     gracefulShutdown,
+		"gracefulShutdownWait": gracefulShutdownWait,
+	}}
 
 	srv := &http.Server{
 		Addr:         address,
@@ -296,7 +303,7 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		Handler:      handler,
 	}
 
-	gracefulShutdown := v.GetBool("http-graceful-shutdown")
+	logger.Flush()
 
 	if gracefulShutdown {
 		go func() {
@@ -312,7 +319,7 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 		<-c
 		logger.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), wait)
+		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownWait)
 		defer cancel()
 		srv.Shutdown(ctx)
 		fmt.Println("received signal for graceful shutdown of server")
@@ -341,7 +348,6 @@ func init() {
 	serveCmd.Flags().StringArrayP("process", "p", []string{}, "process")
 	serveCmd.Flags().StringArrayP("service", "s", []string{}, "service")
 	serveCmd.Flags().StringArrayP("job", "j", []string{}, "job")
-	serveCmd.Flags().DurationP("duration", "", time.Second*15, "the duration to wait for graceful shutdown")
 
 	// HTTP Flags
 	serveCmd.Flags().StringSlice("http-schemes", []string{"http"}, "the \"public\" schemes")
@@ -355,6 +361,7 @@ func init() {
 	serveCmd.Flags().Bool("http-middleware-gzip", false, "enable gzip middleware")
 	serveCmd.Flags().Bool("http-middleware-cors", false, "enable CORS middleware")
 	serveCmd.Flags().Bool("http-graceful-shutdown", false, "enable graceful shutdown")
+	serveCmd.Flags().Duration("http-graceful-shutdown-wait", time.Second*15, "the duration to wait for graceful shutdown")
 
 	// Cache Flags
 	serveCmd.Flags().DurationP("cache-default-expiration", "", time.Minute*5, "the default exipration for items in the cache")
