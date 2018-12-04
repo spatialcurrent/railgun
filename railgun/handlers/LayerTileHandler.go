@@ -68,7 +68,7 @@ func (h *LayerTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		once := &sync.Once{}
-		once.Do(func() { h.Catalog.ReadLock() })
+		h.Catalog.ReadLock()
 		defer once.Do(func() { h.Catalog.ReadUnlock() })
 		h.SendDebug("read locked for " + r.URL.String())
 		obj, err := h.Get(w, r.WithContext(ctx), format, vars)

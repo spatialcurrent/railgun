@@ -7,8 +7,12 @@
 
 package core
 
+import (
+	"context"
+)
+
 type Base interface {
 	Named
 	Mapper
-	Dfl() string
+	Dfl(ctx context.Context) string
 }

@@ -1000,7 +1000,7 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 
 func (c *RailgunCatalog) SaveToUri(uri string, s3_client *s3.S3) error {
 
-	data := c.Dump()
+	data := c.Dump(nil)
 
 	err := func(data map[string]interface{}, uri string) error {
 

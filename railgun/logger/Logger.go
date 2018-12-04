@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -47,21 +48,73 @@ func NewLoggerFromConfig(infoDestination string, infoCompression string, infoFor
 	return New(infoWriter, infoFormat, errorWriter, errorFormat)
 }
 
-func (l *Logger) Info(obj interface{}) {
+func (l *Logger) Debug(obj interface{}) {
 	if err, ok := obj.(error); ok {
-		l.infoWriter.WriteLine(gss.MustSerializeString(map[string]interface{}{"error": err.Error()}, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		m := map[string]interface{}{"level": "debug", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
 	} else if line, ok := obj.(string); ok {
-		l.infoWriter.WriteLine(line)
+		m := map[string]interface{}{"level": "debug", "message": line}
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if m, ok := obj.(map[string]string); ok {
+		m["level"] = "debug"
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if m, ok := obj.(map[string]interface{}); ok {
+		m["level"] = "debug"
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
 	} else {
 		l.infoWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit))
 	}
 }
 
+func (l *Logger) Info(obj interface{}) {
+	if err, ok := obj.(error); ok {
+		m := map[string]interface{}{"level": "info", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if line, ok := obj.(string); ok {
+		m := map[string]interface{}{"level": "info", "message": line}
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if m, ok := obj.(map[string]string); ok {
+		m["level"] = "info"
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if m, ok := obj.(map[string]interface{}); ok {
+		m["level"] = "info"
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else {
+		l.infoWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	}
+}
+
+func (l *Logger) Warn(obj interface{}) {
+	if err, ok := obj.(error); ok {
+		m := map[string]interface{}{"level": "warn", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
+		l.errorWriter.WriteLine(gss.MustSerializeString(m, l.errorFormat, gss.NoHeader, gss.NoLimit))
+	} else if line, ok := obj.(string); ok {
+		m := map[string]interface{}{"level": "warn", "message": line}
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if m, ok := obj.(map[string]string); ok {
+		m["level"] = "warn"
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if m, ok := obj.(map[string]interface{}); ok {
+		m["level"] = "warn"
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else {
+		l.errorWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	}
+}
+
 func (l *Logger) Error(obj interface{}) {
 	if err, ok := obj.(error); ok {
-		l.errorWriter.WriteLine(gss.MustSerializeString(map[string]interface{}{"error": err.Error()}, l.errorFormat, gss.NoHeader, gss.NoLimit))
+		m := map[string]interface{}{"level": "error", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
+		l.errorWriter.WriteLine(gss.MustSerializeString(m, l.errorFormat, gss.NoHeader, gss.NoLimit))
 	} else if line, ok := obj.(string); ok {
-		l.errorWriter.WriteLine(line)
+		m := map[string]interface{}{"level": "error", "message": line}
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if m, ok := obj.(map[string]string); ok {
+		m["level"] = "error"
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+	} else if m, ok := obj.(map[string]interface{}); ok {
+		m["level"] = "error"
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
 	} else {
 		l.errorWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit))
 	}

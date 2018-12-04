@@ -8,6 +8,7 @@
 package core
 
 import (
+	"context"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"reflect"
 )
@@ -22,7 +23,7 @@ func (ws Workspace) GetName() string {
 	return ws.Name
 }
 
-func (ws Workspace) Map() map[string]interface{} {
+func (ws Workspace) Map(ctx context.Context) map[string]interface{} {
 	return map[string]interface{}{
 		"name":        ws.Name,
 		"title":       ws.Title,
@@ -30,9 +31,9 @@ func (ws Workspace) Map() map[string]interface{} {
 	}
 }
 
-func (ws Workspace) Dfl() string {
+func (ws Workspace) Dfl(ctx context.Context) string {
 	dict := map[dfl.Node]dfl.Node{}
-	for k, v := range ws.Map() {
+	for k, v := range ws.Map(ctx) {
 		dict[dfl.Literal{Value: k}] = dfl.Literal{Value: v}
 	}
 	return dfl.Dictionary{Nodes: dict}.Dfl(dfl.DefaultQuotes, false, 0)

@@ -30,6 +30,7 @@ import (
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	//"github.com/spatialcurrent/go-try-get/gtg"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/middleware"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -46,16 +47,18 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
-	if m, ok := ctx.Value("request").(map[string]interface{}); ok {
-		m["vars"] = vars
-		ctx = context.WithValue(ctx, "request", m)
+	if v := ctx.Value("request"); v != nil {
+		if req, ok := v.(middleware.Request); ok {
+			req.Vars = vars
+			req.Handler = reflect.TypeOf(h).Elem().Name()
+			ctx = context.WithValue(ctx, "request", req)
+		}
 	}
-	ctx = context.WithValue(ctx, "handler", reflect.TypeOf(h).Elem().Name())
 
 	switch r.Method {
 	case "POST":
 		once := &sync.Once{}
-		once.Do(func() { h.Catalog.ReadLock() })
+		h.Catalog.ReadLock()
 		defer once.Do(func() { h.Catalog.ReadUnlock() })
 		h.SendDebug("read locked for " + r.URL.String())
 		obj, err := h.Post(w, r.WithContext(ctx), format, vars)
@@ -87,24 +90,25 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (interface{}, error) {
+func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (object interface{}, err error) {
 
 	ctx := r.Context()
 
 	defer func() {
-		start := ctx.Value("start").(time.Time)
-		end := time.Now()
-		profile := map[string]interface{}{
-			"start":    start.Format(time.RFC3339),
-			"end":      end.Format(time.RFC3339),
-			"duration": end.Sub(start).String(),
+		if v := ctx.Value("log"); v != nil {
+			if log, ok := v.(*sync.Once); ok {
+				log.Do(func() {
+					if v := ctx.Value("request"); v != nil {
+						if req, ok := v.(middleware.Request); ok {
+							req.Error = err
+							end := time.Now()
+							req.End = &end
+							h.SendInfo(req.Map())
+						}
+					}
+				})
+			}
 		}
-		m := map[string]interface{}{
-			"request": ctx.Value("request"),
-			"handler": ctx.Value("handler"),
-			"profile": profile,
-		}
-		h.SendInfo(m)
 	}()
 
 	serviceName, ok := vars["name"]

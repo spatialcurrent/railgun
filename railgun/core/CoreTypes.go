@@ -19,4 +19,5 @@ var CoreTypes = map[string]reflect.Type{
 	"service":   ServiceType,
 	"job":       JobType,
 	"workflow":  WorkflowType,
+	"user":      UserType,
 }

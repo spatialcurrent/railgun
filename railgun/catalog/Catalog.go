@@ -8,6 +8,7 @@
 package catalog
 
 import (
+	"context"
 	"reflect"
 	"sync"
 )
@@ -141,7 +142,7 @@ func (c *Catalog) List(t reflect.Type) interface{} {
 	return reflect.MakeSlice(reflect.SliceOf(t), 0, 0).Interface()
 }
 
-func (c *Catalog) Dump() map[string]interface{} {
+func (c *Catalog) Dump(ctx context.Context) map[string]interface{} {
 	dump := map[string]interface{}{}
 	for typeName, input := range c.objects {
 		output := make([]map[string]interface{}, 0)
@@ -150,7 +151,7 @@ func (c *Catalog) Dump() map[string]interface{} {
 		for i := 0; i < numberOfObjects; i++ {
 			v := objects.Index(i).Interface()
 			if m, ok := v.(core.Mapper); ok {
-				output = append(output, m.Map())
+				output = append(output, m.Map(ctx))
 			}
 		}
 		dump[typeName] = output
@@ -158,9 +159,9 @@ func (c *Catalog) Dump() map[string]interface{} {
 	return dump
 }
 
-func (c *Catalog) SafeDump() map[string]interface{} {
+func (c *Catalog) SafeDump(ctx context.Context) map[string]interface{} {
 	c.ReadLock()
-	dump := c.Dump()
+	dump := c.Dump(ctx)
 	c.ReadUnlock()
 	return dump
 }

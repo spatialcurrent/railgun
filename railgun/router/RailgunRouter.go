@@ -17,6 +17,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/catalog"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	"github.com/spatialcurrent/railgun/railgun/handlers"
+	"github.com/spatialcurrent/railgun/railgun/middleware"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/viper"
 )
@@ -45,40 +46,27 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 		Debug:           v.GetBool("verbose"),
 	}
 
-	if v.GetBool("http-middleware-debug") {
-		messages <- map[string]interface{}{
-			"init": map[string]interface{}{
-				"middleware": map[string]interface{}{"name": "debug", "enabled": true},
-			},
-		}
-		r.Use(DebugMiddleware(messages))
+	if v.GetBool("http-middleware-recover") {
+		messages <- map[string]interface{}{"middleware": "recover", "loaded": true}
+		r.Use(middleware.RecoverMiddleware(errors))
 	}
 
-	if v.GetBool("http-middleware-recover") {
-		messages <- map[string]interface{}{
-			"init": map[string]interface{}{
-				"middleware": map[string]interface{}{"name": "recover", "enabled": true},
-			},
-		}
-		r.Use(RecoverMiddleware(errors))
-	}
+	messages <- map[string]interface{}{"middleware": "request", "loaded": true}
+	r.Use(middleware.RequestMiddleware())
+
+	messages <- map[string]interface{}{"middleware": "authenticate", "loaded": true}
+	r.Use(middleware.AuthenticateMiddleware(validMethods, publicKey))
+
+	r.Use(middleware.LogMiddleware(messages))
 
 	if v.GetBool("http-middleware-gzip") {
-		messages <- map[string]interface{}{
-			"init": map[string]interface{}{
-				"middleware": map[string]interface{}{"name": "gzip", "enabled": true},
-			},
-		}
+		messages <- map[string]interface{}{"middleware": "gzip", "loaded": true}
 		r.Use(gziphandler.MustNewGzipLevelHandler(gzip.DefaultCompression))
 	}
 
 	if v.GetBool("http-middleware-cors") {
-		messages <- map[string]interface{}{
-			"init": map[string]interface{}{
-				"middleware": map[string]interface{}{"name": "cors", "enabled": true},
-			},
-		}
-		r.Use(CorsMiddleware(v.GetString("cors-origin"), v.GetString("cors-credentials")))
+		messages <- map[string]interface{}{"middleware": "cors", "loaded": true}
+		r.Use(middleware.CorsMiddleware(v.GetString("cors-origin"), v.GetString("cors-credentials")))
 	}
 
 	r.AddHomeHandler("home", "/")

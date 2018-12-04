@@ -295,6 +295,22 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		"gracefulShutdownWait": gracefulShutdownWait,
 	}}
 
+	if httpTimeoutIdle.Seconds() < 5.0 {
+		logger.Fatal("http-timeout-idle cannot be less than 5 seconds")
+	}
+
+	if httpTimeoutRead.Seconds() < 5.0 {
+		logger.Fatal("http-timeout-read cannot be less than 5 seconds")
+	}
+
+	if httpTimeoutWrite.Seconds() < 5.0 {
+		logger.Fatal("http-timeout-write cannot be less than 5 seconds")
+	}
+
+	if gracefulShutdown && gracefulShutdownWait.Seconds() < 5.0 {
+		logger.Fatal("graceful-shutdown-wait cannot be less than 5 seconds")
+	}
+
 	srv := &http.Server{
 		Addr:         address,
 		IdleTimeout:  httpTimeoutIdle,

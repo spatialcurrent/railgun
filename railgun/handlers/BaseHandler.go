@@ -61,6 +61,10 @@ func (h *BaseHandler) SendInfo(message interface{}) {
 	h.Messages <- message
 }
 
+func (h *BaseHandler) SendWarn(message interface{}) {
+	h.Errors <- message
+}
+
 func (h *BaseHandler) SendError(message interface{}) {
 	h.Errors <- message
 }
@@ -174,8 +178,6 @@ func (h *BaseHandler) ParseBody(inputBytes []byte, format string) (interface{}, 
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Println("Bytes:", string(inputBytes))
 
 	inputObject, err := gss.DeserializeBytes(inputBytes, format, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, false, false)
 	if err != nil {

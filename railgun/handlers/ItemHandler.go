@@ -18,6 +18,7 @@ import (
 
 import (
 	"github.com/aws/aws-sdk-go/service/s3"
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
@@ -38,7 +39,7 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		once := &sync.Once{}
-		once.Do(func() { h.Catalog.ReadLock() })
+		h.Catalog.ReadLock()
 		defer once.Do(func() { h.Catalog.ReadUnlock() })
 		obj, err := h.Get(w, r, format)
 		once.Do(func() { h.Catalog.ReadUnlock() })
@@ -60,7 +61,7 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "POST":
 		once := &sync.Once{}
-		once.Do(func() { h.Catalog.WriteLock() })
+		h.Catalog.WriteLock()
 		defer once.Do(func() { h.Catalog.WriteUnlock() })
 		obj, err := h.Post(w, r, format)
 		once.Do(func() { h.Catalog.WriteUnlock() })
@@ -82,7 +83,7 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "DELETE":
 		once := &sync.Once{}
-		once.Do(func() { h.Catalog.WriteLock() })
+		h.Catalog.WriteLock()
 		defer once.Do(func() { h.Catalog.WriteUnlock() })
 		obj, err := h.Delete(w, r, format)
 		once.Do(func() { h.Catalog.WriteUnlock() })
@@ -113,6 +114,7 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ItemHandler) Get(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
+	ctx := r.Context()
 	vars := mux.Vars(r)
 	name, ok := vars["name"]
 	if !ok {
@@ -124,21 +126,24 @@ func (h *ItemHandler) Get(w http.ResponseWriter, r *http.Request, format string)
 	}
 	obj := map[string]interface{}{
 		"success": true,
-		"item":    item.Map(),
+		"item":    item.Map(ctx),
 	}
 	return obj, nil
 }
 
 func (h *ItemHandler) Post(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
 
-	authorization, err := h.GetAuthorization(r)
-	if err != nil {
-		return nil, err
+	ctx := r.Context()
+
+	var claims *jwt.StandardClaims
+	if v := ctx.Value("claims"); v != nil {
+		if c, ok := v.(*jwt.StandardClaims); ok {
+			claims = c
+		}
 	}
 
-	claims, err := h.ParseAuthorization(authorization)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not verify authorization")
+	if claims == nil {
+		return nil, errors.New("not authorized")
 	}
 
 	if claims.Subject != "root" {
@@ -206,14 +211,17 @@ func (h *ItemHandler) Post(w http.ResponseWriter, r *http.Request, format string
 
 func (h *ItemHandler) Delete(w http.ResponseWriter, r *http.Request, format string) (interface{}, error) {
 
-	authorization, err := h.GetAuthorization(r)
-	if err != nil {
-		return nil, err
+	ctx := r.Context()
+
+	var claims *jwt.StandardClaims
+	if v := ctx.Value("claims"); v != nil {
+		if c, ok := v.(*jwt.StandardClaims); ok {
+			claims = c
+		}
 	}
 
-	claims, err := h.ParseAuthorization(authorization)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not verify authorization")
+	if claims == nil {
+		return nil, errors.New("not authorized")
 	}
 
 	if claims.Subject != "root" {
@@ -231,7 +239,7 @@ func (h *ItemHandler) Delete(w http.ResponseWriter, r *http.Request, format stri
 		return nil, errors.Wrap(&rerrors.ErrMissingObject{Type: h.Singular, Name: name}, "error deleting "+h.Singular)
 	}
 
-	err = h.Catalog.DeleteItem(name, h.Type)
+	err := h.Catalog.DeleteItem(name, h.Type)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deleting "+h.Singular)
 	}

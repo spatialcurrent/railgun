@@ -9,16 +9,23 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"net/http"
+	"reflect"
+	"sync"
+	"time"
+)
+
+import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/middleware"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	"net/http"
-	//"reflect"
 )
 
 type WorkflowExecHandler struct {
@@ -27,11 +34,29 @@ type WorkflowExecHandler struct {
 
 func (h *WorkflowExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	vars := mux.Vars(r)
+
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
+
+	if v := ctx.Value("request"); v != nil {
+		if req, ok := v.(middleware.Request); ok {
+			req.Vars = vars
+			req.Handler = reflect.TypeOf(h).Elem().Name()
+			ctx = context.WithValue(ctx, "request", req)
+		}
+	}
 
 	switch r.Method {
 	case "POST":
-		obj, err := h.Post(w, r, format, mux.Vars(r))
+		once := &sync.Once{}
+		h.Catalog.ReadLock()
+		defer once.Do(func() { h.Catalog.ReadUnlock() })
+		h.SendDebug("read locked for " + r.URL.String())
+		obj, err := h.Post(w, r.WithContext(ctx), format, vars)
+		once.Do(func() { h.Catalog.ReadUnlock() })
+		h.SendDebug("read unlocked for " + r.URL.String())
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
@@ -58,7 +83,26 @@ func (h *WorkflowExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 }
 
-func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (interface{}, error) {
+func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (object interface{}, err error) {
+
+	ctx := r.Context()
+
+	defer func() {
+		if v := ctx.Value("log"); v != nil {
+			if log, ok := v.(*sync.Once); ok {
+				log.Do(func() {
+					if v := ctx.Value("request"); v != nil {
+						if req, ok := v.(middleware.Request); ok {
+							req.Error = err
+							end := time.Now()
+							req.End = &end
+							h.SendInfo(req.Map())
+						}
+					}
+				})
+			}
+		}
+	}()
 
 	workflowName, ok := vars["name"]
 	if !ok {

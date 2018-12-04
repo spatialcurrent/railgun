@@ -7,6 +7,10 @@
 
 package core
 
+import (
+	"context"
+)
+
 type Mapper interface {
-	Map() map[string]interface{}
+	Map(ctx context.Context) map[string]interface{}
 }

@@ -8,6 +8,7 @@
 package core
 
 import (
+	"context"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/railgun/railgun/cache"
 	"reflect"
@@ -29,7 +30,7 @@ func (l Layer) GetName() string {
 	return l.Name
 }
 
-func (l Layer) Map() map[string]interface{} {
+func (l Layer) Map(ctx context.Context) map[string]interface{} {
 	m := map[string]interface{}{
 		"name":        l.Name,
 		"title":       l.Title,
@@ -57,9 +58,9 @@ func (l Layer) Map() map[string]interface{} {
 	return m
 }
 
-func (l Layer) Dfl() string {
+func (l Layer) Dfl(ctx context.Context) string {
 	dict := map[dfl.Node]dfl.Node{}
-	for k, v := range l.Map() {
+	for k, v := range l.Map(ctx) {
 		dict[dfl.Literal{Value: k}] = dfl.Literal{Value: v}
 	}
 	return dfl.Dictionary{Nodes: dict}.Dfl(dfl.DefaultQuotes, false, 0)

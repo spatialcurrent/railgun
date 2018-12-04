@@ -33,6 +33,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/geo"
+	"github.com/spatialcurrent/railgun/railgun/middleware"
 	"github.com/spatialcurrent/railgun/railgun/pipeline"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
@@ -57,16 +58,18 @@ func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
-	if m, ok := ctx.Value("request").(map[string]interface{}); ok {
-		m["vars"] = vars
-		ctx = context.WithValue(ctx, "request", m)
+	if v := ctx.Value("request"); v != nil {
+		if req, ok := v.(middleware.Request); ok {
+			req.Vars = vars
+			req.Handler = reflect.TypeOf(h).Elem().Name()
+			ctx = context.WithValue(ctx, "request", req)
+		}
 	}
-	ctx = context.WithValue(ctx, "handler", reflect.TypeOf(h).Elem().Name())
 
 	switch r.Method {
 	case "GET":
 		once := &sync.Once{}
-		once.Do(func() { h.Catalog.ReadLock() })
+		h.Catalog.ReadLock()
 		defer once.Do(func() { h.Catalog.ReadUnlock() })
 		h.SendDebug("read locked for " + r.URL.String())
 		obj, err := h.Get(w, r.WithContext(ctx), format, vars)
@@ -115,60 +118,51 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 
 	defer func() {
 		ctx.Context.Value("log").(*sync.Once).Do(func() {
-			start := ctx.Context.Value("start").(time.Time)
-			end := time.Now()
-			profile := map[string]interface{}{
-				"start":    start.Format(time.RFC3339),
-				"delay":    delay.String(),
-				"end":      end.Format(time.RFC3339),
-				"duration": end.Sub(start).String(),
-			}
-			if d := ctx.Context.Value("profile_head"); d != nil {
-				profile["head"] = d
-			}
-			if d := ctx.Context.Value("profile_read"); d != nil {
-				profile["read"] = d
-			}
-			if d := ctx.Context.Value("profile_deserialize"); d != nil {
-				profile["deserialize"] = d
-			}
-			m := map[string]interface{}{
-				"request": ctx.Context.Value("request"),
-				"handler": ctx.Context.Value("handler"),
-				"service": ctx.Context.Value("service"),
-				"process": ctx.Context.Value("process"),
-				"profile": profile,
-				"cache": map[string]interface{}{
-					"hit": hit,
-				},
-				"inside": inside,
-			}
-			datastore := map[string]interface{}{
-				"name": ctx.Context.Value("datastore"),
-			}
-			if uri := ctx.Context.Value("uri"); uri != nil {
-				datastore["uri"] = uri
-			}
-			m["datastore"] = datastore
-			s3 := map[string]interface{}{}
-			if bucket := ctx.Context.Value("bucket"); bucket != nil {
-				s3["bucket"] = bucket
-			}
-			if key := ctx.Context.Value("key"); key != nil {
-				s3["key"] = key
-			}
-			if len(s3) > 0 {
-				m["s3"] = s3
-			}
-			if v := ctx.Context.Value("error"); v != nil {
-				if err, ok := v.(error); ok {
-					m["error"] = err.Error()
+			if v := ctx.Context.Value("request"); v != nil {
+				if req, ok := v.(middleware.Request); ok {
+					req.Error = err
+					end := time.Now()
+					req.End = &end
+					profile := map[string]interface{}{}
+					if d := ctx.Context.Value("profile_head"); d != nil {
+						profile["head"] = d
+					}
+					if d := ctx.Context.Value("profile_read"); d != nil {
+						profile["read"] = d
+					}
+					if d := ctx.Context.Value("profile_deserialize"); d != nil {
+						profile["deserialize"] = d
+					}
+					m := map[string]interface{}{
+						"request": req.Map(),
+						"service": ctx.Context.Value("service"),
+						"process": ctx.Context.Value("process"),
+						"profile": profile,
+						"cache": map[string]interface{}{
+							"hit": hit,
+						},
+						"inside": inside,
+					}
+					datastore := map[string]interface{}{
+						"name": ctx.Context.Value("datastore"),
+					}
+					if uri := ctx.Context.Value("uri"); uri != nil {
+						datastore["uri"] = uri
+					}
+					m["datastore"] = datastore
+					s3 := map[string]interface{}{}
+					if bucket := ctx.Context.Value("bucket"); bucket != nil {
+						s3["bucket"] = bucket
+					}
+					if key := ctx.Context.Value("key"); key != nil {
+						s3["key"] = key
+					}
+					if len(s3) > 0 {
+						m["s3"] = s3
+					}
+					h.SendInfo(m)
 				}
 			}
-			if err != nil {
-				m["error"] = err.Error()
-			}
-			h.SendInfo(m)
 		})
 	}()
 
@@ -299,7 +293,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 					Key:    aws.String(key),
 				})
 				if err != nil {
-					h.SendError(map[string]interface{}{"level": "warn", "message": err.Error()})
+					h.SendError(err)
 				} else if headObjectOutput != nil {
 					break
 				}
