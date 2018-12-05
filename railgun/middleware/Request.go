@@ -5,6 +5,7 @@ import (
 )
 
 type Request struct {
+  Client string
 	Host    string
 	Url     string
 	Method  string
@@ -16,8 +17,9 @@ type Request struct {
 	Error error
 }
 
-func NewRequest(host string, url string, method string, start *time.Time, subject string, handler string, err error) Request {
+func NewRequest(client string, host string, url string, method string, start *time.Time, subject string, handler string, err error) Request {
 	return Request{
+	  Client: client,
 		Host:    host,
 		Url:     url,
 		Method:  method,
@@ -32,6 +34,7 @@ func NewRequest(host string, url string, method string, start *time.Time, subjec
 
 func (r Request) Map() map[string]interface{} {
 	m := map[string]interface{}{
+	  "client": r.Client,
 		"host":   r.Host,
 		"url":    r.Url,
 		"method": r.Method,

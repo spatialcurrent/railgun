@@ -8,8 +8,17 @@
 package handlers
 
 import (
-	"github.com/spatialcurrent/railgun/railgun/util"
+	"context"
 	"net/http"
+	"reflect"
+	"sync"
+	"time"
+)
+
+import (
+	"github.com/gorilla/mux"
+	"github.com/spatialcurrent/railgun/railgun/middleware"
+	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
 type HealthHandler struct {
@@ -18,7 +27,35 @@ type HealthHandler struct {
 
 func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	vars := mux.Vars(r)
+
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
+
+	if v := ctx.Value("request"); v != nil {
+		if req, ok := v.(middleware.Request); ok {
+			req.Vars = vars
+			req.Handler = reflect.TypeOf(h).Elem().Name()
+			ctx = context.WithValue(ctx, "request", req)
+		}
+	}
+
+	defer func() {
+		if v := ctx.Value("log"); v != nil {
+			if log, ok := v.(*sync.Once); ok {
+				log.Do(func() {
+					if v := ctx.Value("request"); v != nil {
+						if req, ok := v.(middleware.Request); ok {
+							end := time.Now()
+							req.End = &end
+							h.SendInfo(req.Map())
+						}
+					}
+				})
+			}
+		}
+	}()
 
 	switch r.Method {
 	case "GET":
