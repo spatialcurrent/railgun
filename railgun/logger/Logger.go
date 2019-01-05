@@ -40,8 +40,8 @@ func NewLoggerFromConfig(infoDestination string, infoCompression string, infoFor
 
 	infoWriter, err := grw.WriteToResource(infoDestination, infoCompression, true, s3_client)
 	if err != nil {
-		errorWriter.WriteError(errors.Wrap(err, "error creating info writer"))
-		errorWriter.Close()
+		errorWriter.WriteError(errors.Wrap(err, "error creating info writer")) // #nosec
+		errorWriter.Close()                                                    // #nosec
 		os.Exit(1)
 	}
 
@@ -51,100 +51,100 @@ func NewLoggerFromConfig(infoDestination string, infoCompression string, infoFor
 func (l *Logger) Debug(obj interface{}) {
 	if err, ok := obj.(error); ok {
 		m := map[string]interface{}{"level": "debug", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if line, ok := obj.(string); ok {
 		m := map[string]interface{}{"level": "debug", "message": line}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if m, ok := obj.(map[string]string); ok {
 		m["level"] = "debug"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if m, ok := obj.(map[string]interface{}); ok {
 		m["level"] = "debug"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else {
-		l.infoWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	}
 }
 
 func (l *Logger) Info(obj interface{}) {
 	if err, ok := obj.(error); ok {
 		m := map[string]interface{}{"level": "info", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if line, ok := obj.(string); ok {
 		m := map[string]interface{}{"level": "info", "message": line}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if m, ok := obj.(map[string]string); ok {
 		m["level"] = "info"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if m, ok := obj.(map[string]interface{}); ok {
 		m["level"] = "info"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else {
-		l.infoWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	}
 }
 
 func (l *Logger) Warn(obj interface{}) {
 	if err, ok := obj.(error); ok {
 		m := map[string]interface{}{"level": "warn", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
-		l.errorWriter.WriteLine(gss.MustSerializeString(m, l.errorFormat, gss.NoHeader, gss.NoLimit))
+		l.errorWriter.WriteLine(gss.MustSerializeString(m, l.errorFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if line, ok := obj.(string); ok {
 		m := map[string]interface{}{"level": "warn", "message": line}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if m, ok := obj.(map[string]string); ok {
 		m["level"] = "warn"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if m, ok := obj.(map[string]interface{}); ok {
 		m["level"] = "warn"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else {
-		l.errorWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.errorWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	}
 }
 
 func (l *Logger) Error(obj interface{}) {
 	if err, ok := obj.(error); ok {
 		m := map[string]interface{}{"level": "error", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
-		l.errorWriter.WriteLine(gss.MustSerializeString(m, l.errorFormat, gss.NoHeader, gss.NoLimit))
+		l.errorWriter.WriteLine(gss.MustSerializeString(m, l.errorFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if line, ok := obj.(string); ok {
 		m := map[string]interface{}{"level": "error", "message": line}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if m, ok := obj.(map[string]string); ok {
 		m["level"] = "error"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else if m, ok := obj.(map[string]interface{}); ok {
 		m["level"] = "error"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	} else {
-		l.errorWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit))
+		l.errorWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
 	}
 }
 
 func (l *Logger) Fatal(obj interface{}) {
-	l.infoWriter.Flush()
-	l.infoWriter.Close()
-	l.Error(obj)
-	l.errorWriter.Flush()
-	l.errorWriter.Close()
+	l.infoWriter.Flush()  // #nosec
+	l.infoWriter.Close()  // #nosec
+	l.Error(obj)          // #nosec
+	l.errorWriter.Flush() // #nosec
+	l.errorWriter.Close() // #nosec
 	os.Exit(1)
 }
 
 func (l *Logger) Flush() {
-	l.infoWriter.Flush()
-	l.errorWriter.Flush()
+	l.infoWriter.Flush()  // #nosec
+	l.errorWriter.Flush() // #nosec
 }
 
 func (l *Logger) Close() {
 	l.Flush()
-	l.infoWriter.Close()
-	l.errorWriter.Close()
+	l.infoWriter.Close()  // #nosec
+	l.errorWriter.Close() // #nosec
 }
 
 func (l *Logger) ListenInfo(messages chan interface{}, wg *sync.WaitGroup) {
 	go func(messages chan interface{}) {
 		for message := range messages {
 			l.Info(message)
-			l.infoWriter.Flush()
+			l.infoWriter.Flush() // #nosec
 		}
 		if wg != nil {
 			wg.Done()
@@ -156,7 +156,7 @@ func (l *Logger) ListenError(messages chan interface{}, wg *sync.WaitGroup) {
 	go func(messages chan interface{}) {
 		for message := range messages {
 			l.Error(message)
-			l.errorWriter.Flush()
+			l.errorWriter.Flush() // #nosec
 		}
 		if wg != nil {
 			wg.Done()

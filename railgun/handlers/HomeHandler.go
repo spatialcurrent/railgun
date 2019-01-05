@@ -238,6 +238,6 @@ func (h *HomeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     </html>
   `
 
-	w.Write([]byte(str))
+	w.Write([]byte(str)) // #nosec
 
 }

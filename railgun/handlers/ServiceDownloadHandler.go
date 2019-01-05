@@ -11,7 +11,8 @@ import (
 	"context"
 	"fmt"
 	"golang.org/x/sync/errgroup"
-	"io/ioutil"
+	"path/filepath"
+	//"io/ioutil"
 	"net/http"
 	"reflect"
 	"strings"
@@ -28,18 +29,17 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-	//"github.com/spatialcurrent/go-try-get/gtg"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/middleware"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
-type ServiceExecHandler struct {
+type ServiceDownloadHandler struct {
 	*BaseHandler
 	Cache *gocache.Cache
 }
 
-func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *ServiceDownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
@@ -56,12 +56,12 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.Method {
-	case "POST":
+	case "GET":
 		once := &sync.Once{}
 		h.Catalog.ReadLock()
 		defer once.Do(func() { h.Catalog.ReadUnlock() })
 		h.SendDebug("read locked for " + r.URL.String())
-		obj, err := h.Post(w, r.WithContext(ctx), format, vars)
+		filename, obj, err := h.Get(w, r.WithContext(ctx), format, vars)
 		once.Do(func() { h.Catalog.ReadUnlock() })
 		h.SendDebug("read unlocked for " + r.URL.String())
 		if err != nil {
@@ -71,7 +71,7 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
+			err = h.RespondWithObject(w, http.StatusOK, obj, format, filename)
 			if err != nil {
 				h.SendError(err)
 				err = h.RespondWithError(w, err, format)
@@ -80,7 +80,6 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	case "OPTIONS":
 	default:
 		err := h.RespondWithNotImplemented(w, format)
 		if err != nil {
@@ -90,9 +89,16 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (object interface{}, err error) {
+func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (filename string, object interface{}, err error) {
 
 	ctx := r.Context()
+	
+	now := time.Now()
+	if v := ctx.Value("request"); v != nil {
+		if req, ok := v.(middleware.Request); ok {
+			now = *req.Start
+		}
+	}
 
 	defer func() {
 		if v := ctx.Value("log"); v != nil {
@@ -113,32 +119,23 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 	serviceName, ok := vars["name"]
 	if !ok {
-		return nil, &rerrors.ErrMissingRequiredParameter{Name: "name"}
+		return "", nil, &rerrors.ErrMissingRequiredParameter{Name: "name"}
 	}
+	
+	outputFilename := fmt.Sprintf("%s_%s.%s", serviceName, now.Format("20060102"), filepath.Ext(r.URL.Path))
 
 	service, ok := h.Catalog.GetService(serviceName)
 	if !ok {
-		return nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
-	}
-
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return nil, errors.Wrap(err, "error reading from request body")
-	}
-
-	jobVariables, err := h.ParseVariables(body, format)
-	if err != nil {
-		return nil, errors.Wrap(err, "error parsing variables from body")
+		return "", nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
 	}
 
 	variables := h.AggregateMaps(
 		h.GetServiceVariables(h.Cache, serviceName),
-		service.Defaults,
-		jobVariables)
+		service.Defaults)
 
 	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
-		return nil, errors.Wrap(err, "invalid data store uri")
+		return "", nil, errors.Wrap(err, "invalid data store uri")
 	}
 	inputScheme, inputPath := grw.SplitUri(inputUri)
 
@@ -153,12 +150,12 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 		s3Client, err = h.GetAWSS3Client()
 		if err != nil {
-			return nil, errors.Wrap(err, "error connecting to AWS")
+			return "", nil, errors.Wrap(err, "error connecting to AWS")
 		}
 
 		i := strings.Index(inputPath, "/")
 		if i == -1 {
-			return nil, errors.New("path missing bucket")
+			return "", nil, errors.New("path missing bucket")
 		}
 
 		bucket := inputPath[0:i]
@@ -170,7 +167,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 				Prefix: aws.String(inputPath[i+1 : j]),
 			})
 			if err != nil {
-				return nil, errors.Wrap(err, "could not list objects for path "+inputPath)
+				return "", nil, errors.Wrap(err, "could not list objects for path "+inputPath)
 			}
 			for _, obj := range listObjectsOutput.Contents {
 				if key := *obj.Key; strings.HasSuffix(key, inputPath[j+1:]) {
@@ -186,7 +183,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 				Key:    aws.String(key),
 			})
 			if err != nil {
-				return nil, errors.Wrap(err, "error heading S3 object")
+				return "", nil, errors.Wrap(err, "error heading S3 object")
 			}
 			lastModified[fmt.Sprintf("s3://%s/%s", bucket, key)] = *headObjectOutput.LastModified
 		}
@@ -200,13 +197,9 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 				inputUri,
 				lastModified[fmt.Sprintf("s3://%s/%s", bucket, key)])
 
-			//fmt.Println("* checking cache with key\n:", cacheKeyDataStore)
-
 			if object, found := h.Cache.Get(cacheKeyDataStore); found {
-				//fmt.Println("* cache hit for datastore with key:\n" + cacheKeyDataStore)
 				inputObjects = append(inputObjects, object)
 			} else {
-				//fmt.Println("* cache miss for datastore with key:\n" + cacheKeyDataStore)
 				inputObjects = append(inputObjects, nil)
 			}
 
@@ -218,7 +211,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 		inputFile, inputFileInfo, err := grw.ExpandOpenAndStat(inputPath)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
 
 		lastModified[inputUri] = inputFileInfo.ModTime()
@@ -229,12 +222,11 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 			lastModified[inputUri])
 
 		if object, found := h.Cache.Get(cacheKeyDataStore); found {
-			//fmt.Println("cache hit for datastore with key " + cacheKeyDataStore)
 			inputObjects = append(inputObjects, object)
 		} else {
 			inputReader, err := grw.ReadFromFile(inputFile, service.DataStore.Compression, false, 4096)
 			if err != nil {
-				return nil, errors.Wrap(err, "error creating grw.ByteReadCloser for file at path \""+inputPath+"\"")
+				return "", nil, errors.Wrap(err, "error creating grw.ByteReadCloser for file at path \""+inputPath+"\"")
 			}
 			inputReaders[inputUri] = inputReader
 			inputObjects = append(inputObjects, nil)
@@ -285,12 +277,8 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 	// Wait until all objects have been loaded
 	if err := wg.Wait(); err != nil {
-		return nil, errors.Wrap(err, "error fetching data")
+		return "", nil, errors.Wrap(err, "error fetching data")
 	}
-
-	//fmt.Println("* aggregating")
-
-	//fmt.Println("* evaluating")
 
 	variables, outputObject, err := service.Process.Node.Evaluate(
 		variables,
@@ -298,18 +286,12 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		dfl.DefaultFunctionMap,
 		dfl.DefaultQuotes)
 	if err != nil {
-		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
+		return "", nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)
 	}
-
-	//fmt.Println("* saving variables")
 
 	// Set the variables to the cache every time to bump the expiration
 	h.SetServiceVariables(h.Cache, serviceName, variables)
 
-	//fmt.Println("* variables saved")
-
-	//fmt.Println("Output Object: ", outputObject)
-
-	return gss.StringifyMapKeys(outputObject), nil
+	return outputFilename, gss.StringifyMapKeys(outputObject), nil
 
 }

@@ -83,7 +83,7 @@ func (h *ServiceTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
 			if err != nil {
 				h.SendInfo(err)
 				err = h.RespondWithError(w, err, format)
@@ -110,9 +110,8 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	// Randomly sleep to increase cache performance.
 	inside := true
 	hit := false
-	delay := time.Duration(0) * time.Millisecond
 	if tileRandomDelay := h.Viper.GetInt("tile-random-delay"); tileRandomDelay > 0 {
-		delay = time.Duration(rand.Intn(tileRandomDelay)) * time.Millisecond
+		delay := time.Duration(rand.Intn(tileRandomDelay)) * time.Millisecond
 		time.Sleep(delay)
 	}
 

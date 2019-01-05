@@ -673,6 +673,6 @@ func (h *SwaggerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Messages <- err
 		return
 	}
-	w.Write(b)
+	w.Write(b) // #nosec
 
 }

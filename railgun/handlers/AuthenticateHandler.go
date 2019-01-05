@@ -36,7 +36,7 @@ func (h *AuthenticateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, statusCode, obj, format)
+			err = h.RespondWithObject(w, statusCode, obj, "", format)
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)

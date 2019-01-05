@@ -2,9 +2,11 @@
 
 #DATASTORE_URI="s3://$RAILGUN_BUCKET/workspace/osm/datastore/amenities/amenities.geojsonl.gz"
 #DATASTORE_URI="s3://$RAILGUN_BUCKET/workspace/osm/datastore/amenities/tiles/*.geojsonl.gz"
-DATASTORE_URI="s3://$RAILGUN_BUCKET/tiles/osm/pois/8/8-*.geojsonl.gz"
+#DATASTORE_URI="s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-*.geojsonl.gz"
 #DATASTORE_URI="~/Downloads/dc_amenities.geojsonl"
+#DATASTORE_URI='($z == null) ? "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-*.geojsonl.gz" : ( ($z < 8) ? null : "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-" + int64(mul($x, pow(2, sub(8, $z)))) + "-" + int64(mul($y, pow(2, sub(8, $z)))) + ".geojsonl.gz")'
 
+export SERVER=https://railgun.spatialcurrent.io
 
 
 #if [[ -z "${RAILGUN_BUCKET}" ]]; then
@@ -40,18 +42,43 @@ echo "Using JWT Token:"
 echo $JWT_TOKEN
 echo "****************************"
 
-go run cmd/railgun/main.go client workspaces add \
---name osm \
---title osm \
---description 'Workspace for OpenStreetMap data'
+go run cmd/railgun/main.go client processes update \
+--name water_points \
+--title Water Points \
+--description 'Filter a list of GeoJSON features for water points.' \
+--tags '[geojson]' \
+--expression 'filter(@, "((@properties?.amenity != null) and (@properties.amenity iin [waterpoint, water_point, "water point", drinkingwater, drinking_water, "drinking water", drinking])) or ((@properties?.natural != null) and (@properties.natural iin [spring])) or ((@properties?.emergency != null) and (@properties.emergency iin [watertank, water_tank, "water tank"]))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+
+go run cmd/railgun/main.go client services update \
+--name water_points_geojson \
+--title 'Water Points' \
+--description 'Find locations of water points.' \
+--tags '[water, geojson]' \
+--datastore amenities \
+--process water_points \
+--defaults '{limit: -1}'
+
+exit 0
 
 go run cmd/railgun/main.go client datastores add \
 --workspace osm \
 --name amenities \
 --title Amenities \
 --description 'Amenities from OpenStreetMap' \
---extent '[-77.5195609,38.8099849,-76.9102596,39.1546259]' \
---uri $DATASTORE_URI
+--extent '[-82,36,-69,42]' \
+--uri '($z == null) ? "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-*.geojsonl.gz" : ( ($z < 8) ? null : "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-" + int64(mul($x, pow(2, sub(8, $z)))) + "-" + int64(mul($y, pow(2, sub(8, $z)))) + ".geojsonl.gz")' \
+--format 'jsonl' \
+--compression 'gzip'
+
+go run cmd/railgun/main.go client datastores add \
+--workspace osm \
+--name historical \
+--title Historical \
+--description 'Features of historical value from OpenStreetMap, e.g., monuments memorials, battlefields.' \
+--extent '[-82,36,-69,42]' \
+--uri '($z == null) ? "s3://spatialcurrent-data-us-west-2/tiles/osm/historical/8/8-*.geojsonl.gz" : ( ($z < 8) ? null : "s3://spatialcurrent-data-us-west-2/tiles/osm/historical/8/8-" + int64(mul($x, pow(2, sub(8, $z)))) + "-" + int64(mul($y, pow(2, sub(8, $z)))) + ".geojsonl.gz")' \
+--format 'jsonl' \
+--compression 'gzip'
 
 go run cmd/railgun/main.go client layers add \
 --name amenities \
@@ -159,7 +186,7 @@ go run cmd/railgun/main.go client processes add \
 --title Cuisines \
 --description 'Filter a list of GeoJSON features by cuisines' \
 --tags '[geojson]' \
---expression 'filter(@, "((@properties?.cuisine != null) and (@properties?.cuisine iin $cuisines)) or ((@properties?.amenity != embassy) and (@properties?.name != null) and (intersects($cuisines , set(split(lower(@properties.name),` `)))))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "((@properties?.cuisine != null) and (@properties?.cuisine iin $cuisines)) or (((@properties?.amenity == null) or (not (@properties?.amenity iin {embassy, place_of_worship}))) and (@properties?.name != null) and (intersects($cuisines , set(split(lower(@properties.name),` `)))))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name gas_stations \
@@ -207,8 +234,15 @@ go run cmd/railgun/main.go client processes add \
 --name workout \
 --title Workout \
 --description 'Filter a list of GeoJSON features for locations for working out.' \
+--tags '[fitness, sport, geojson]' \
+--expression 'filter(@, "((@properties?.amenity != null) and (@properties.amenity iin [fitness_center, fitness_centre, gym])) or ((@properties?.leisure != null) and (@properties.leisure iin [fitness_center, fitness_centre, gym]))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+
+go run cmd/railgun/main.go client processes add \
+--name sports \
+--title Sports \
+--description 'Filter a list of GeoJSON features for specific sports.' \
 --tags '[geojson]' \
---expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity iin [fitness_center, gym])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+--expression 'filter(@, "((@properties?.sport != null) and (@properties.sport iin $sports)) or ((((@properties?.amenity != null) and (@properties.amenity iin [fitness_center, fitness_centre, gym, sports_centre])) or ((@properties?.leisure != null) and (@properties.leisure iin [fitness_center, fitness_centre, gym, sports_centre]))) and (((@properties?.name != null) and (intersects($sports, set(split(lower(@properties.name),` `)))))) or ((@properties?.description != null) and (intersects($sports, set(split(lower(@properties.description),` `))))))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client processes add \
 --name cafes \
@@ -230,6 +264,27 @@ go run cmd/railgun/main.go client processes add \
 --description 'Filter a list of GeoJSON features for parks.' \
 --tags '[geojson]' \
 --expression 'filter(@, "(@properties?.leisure != null) and (@properties.leisure iin [park])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+
+go run cmd/railgun/main.go client processes add \
+--name battlefields \
+--title Battlefields \
+--description 'Filter a list of GeoJSON features for battlefields.' \
+--tags '[geojson]' \
+--expression 'filter(@, "((@properties?.historic != null) and (@properties?.historic iin {battlefield})) or ((@properties?.name != null) and (intersects({battlefield}, set(split(lower(@properties.name),` `)))))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+
+go run cmd/railgun/main.go client processes add \
+--name monuments \
+--title Monuments \
+--description 'Filter a list of GeoJSON features of monuments.' \
+--tags '[geojson]' \
+--expression 'filter(@, "((@properties?.historic != null) and (@properties?.historic iin {monument})) or ((@properties?.name != null) and (intersects({monument}, set(split(lower(@properties.name),` `)))))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+
+go run cmd/railgun/main.go client processes add \
+--name schools \
+--title Schools \
+--description 'Filter a list of GeoJSON features for schools.' \
+--tags '[geojson]' \
+--expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity in [school])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client services add \
 --name amenities_extent \
@@ -425,7 +480,7 @@ go run cmd/railgun/main.go client services add \
 --tags '[cuisine, geojson]' \
 --datastore amenities \
 --process cuisines \
---defaults '{cuisines:{vietnamese}, limit: -1}'
+--defaults '{cuisines:{vietnamese, pho, banh mi}, limit: -1}'
 
 go run cmd/railgun/main.go client services add \
 --name breweries_geojson \
@@ -442,8 +497,17 @@ go run cmd/railgun/main.go client services add \
 --description 'Find distilleries' \
 --tags '[craft, liquor, geojson]' \
 --datastore amenities \
---process distilleries \
+--process crafts \
 --defaults '{crafts:{distillery}, limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name wineries_geojson \
+--title 'Wineries' \
+--description 'Find wineries' \
+--tags '[craft, wine, geojson]' \
+--datastore amenities \
+--process crafts \
+--defaults '{crafts:{winery}, limit: -1}'
 
 go run cmd/railgun/main.go client services add \
 --name post_offices_geojson \
@@ -461,4 +525,49 @@ go run cmd/railgun/main.go client services add \
 --tags '[recreation, leisure, geojson]' \
 --datastore amenities \
 --process parks \
+--defaults '{limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name boxing_geojson \
+--title 'Boxing' \
+--description 'Find locations to do boxing, e.g, boxing gyms, etc.' \
+--tags '[fitness, sport, geojson]' \
+--datastore amenities \
+--process sports \
+--defaults '{sports:{boxing}, limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name climbing_geojson \
+--title 'Climbing' \
+--description 'Find locations to do climbing, e.g, rock climbing, bouldering.' \
+--tags '[fitness, sport, geojson]' \
+--datastore amenities \
+--process sports \
+--defaults '{sports:{climbing,bouldering}, limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name battlefields_geojson \
+--title 'Battlefields' \
+--description 'Find locations of historic battlefields.' \
+--tags '[history, geojson]' \
+--datastore historical \
+--process battlefields \
+--defaults '{limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name monuments_geojson \
+--title 'Monuments' \
+--description 'Find locations of historic monuments.' \
+--tags '[history, geojson]' \
+--datastore historical \
+--process monuments \
+--defaults '{limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name schools_geojson \
+--title 'Schools' \
+--description 'Find locations of schools.' \
+--tags '[education, geojson]' \
+--datastore amenities \
+--process schools \
 --defaults '{limit: -1}'

@@ -35,16 +35,16 @@ var emptyFeatureCollectionBytes = []byte("{\"type\":\"FeatureCollection\",\"feat
 
 func respondWith404AndEmptyFeatureCollection(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNotFound)
-	w.Write(emptyFeatureCollectionBytes)
+	w.Write(emptyFeatureCollectionBytes) // #nosec
 }
 
 func respondWith500AndEmptyFeatureCollection(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusInternalServerError)
-	w.Write(emptyFeatureCollectionBytes)
+	w.Write(emptyFeatureCollectionBytes) // #nosec
 }
 
 func respondWithEmptyFeatureCollection(w http.ResponseWriter) {
-	w.Write(emptyFeatureCollectionBytes)
+	w.Write(emptyFeatureCollectionBytes) // #nosec
 }
 
 type LayerTileHandler struct {
@@ -81,7 +81,7 @@ func (h *LayerTileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
@@ -193,7 +193,7 @@ func (h *LayerTileHandler) Get(w http.ResponseWriter, r *http.Request, format st
 			if err != nil {
 				return nil, errors.Wrap(err, "error processing user filter expression "+exp)
 			}
-			p = p.FilterCustom(dfl.And{&dfl.BinaryOperator{Left: layer.Node, Right: userFilterNode}})
+			p = p.FilterCustom(dfl.And{BinaryOperator: &dfl.BinaryOperator{Left: layer.Node, Right: userFilterNode}})
 			tileRequest.Expression = exp
 		} else {
 			p = p.FilterCustom(layer.Node)

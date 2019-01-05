@@ -34,6 +34,9 @@ go fmt
 echo "Formatting $DIR/../railgun/logger"
 cd $DIR/../railgun/logger
 go fmt
+echo "Formatting $DIR/../railgun/middleware"
+cd $DIR/../railgun/middleware
+go fmt
 echo "Formatting $DIR/../railgun/named"
 cd $DIR/../railgun/named
 go fmt

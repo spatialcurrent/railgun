@@ -301,7 +301,11 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 					writeToOutputMemoryBuffer(line.Path, line.Line)
 				} else {
 					if output.Mkdirs {
-						os.MkdirAll(filepath.Dir(line.Path), 0755)
+						err := os.MkdirAll(filepath.Dir(line.Path), 0750)
+						if err != nil {
+							errorsChannel <- errors.Wrap(err, "error creating parent directories for "+line.Path)
+							return
+						}
 					}
 
 					outputWriter, err := grw.WriteToResource(line.Path, output.Compression, true, s3_client)
@@ -341,7 +345,10 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 				messages <- "* error closing output buffer for " + outputPath
 			}
 			if output.Mkdirs {
-				os.MkdirAll(filepath.Dir(outputPath), 0755)
+				err := os.MkdirAll(filepath.Dir(outputPath), 0750)
+				if err != nil {
+					messages <- "* error creating parent directories for file at " + outputPath
+				}
 			}
 			outputWriter, err := grw.WriteToResource(outputPath, "", output.Append, s3_client)
 			if err != nil {
@@ -509,8 +516,11 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 	v := processViper
 
-	v.BindPFlags(cmd.PersistentFlags())
-	v.BindPFlags(cmd.Flags())
+	//err := v.BindPFlags(cmd.PersistentFlags())
+	err := v.BindPFlags(cmd.Flags())
+	if err != nil {
+		panic(err)
+	}
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	v.AutomaticEnv() // set environment variables to overwrite config
 	util.MergeConfigs(v, v.GetStringArray("config-uri"))
@@ -588,8 +598,8 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 	infoWriter, err := grw.WriteToResource(processConfig.InfoDestination, processConfig.InfoCompression, true, s3_client)
 	if err != nil {
-		errorWriter.WriteError(errors.Wrap(err, "error creating log writer"))
-		errorWriter.Close()
+		errorWriter.WriteError(errors.Wrap(err, "error creating log writer")) // #nosec
+		errorWriter.Close()                                                   // #nosec
 		os.Exit(1)
 	}
 

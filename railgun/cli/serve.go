@@ -30,6 +30,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/railgun/railgun"
 	"github.com/spatialcurrent/railgun/railgun/catalog"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	rlogger "github.com/spatialcurrent/railgun/railgun/logger"
@@ -40,7 +41,7 @@ import (
 
 var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[]}")
 
-func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, logger *rlogger.Logger, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, errorsChannel chan interface{}, requests chan request.Request, messages chan interface{}, verbose bool) (*router.RailgunRouter, error) {
+func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, logger *rlogger.Logger, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, errorsChannel chan interface{}, requests chan request.Request, messages chan interface{}, version string, gitBranch string, gitCommit string, verbose bool) (*router.RailgunRouter, error) {
 
 	go func(requests chan request.Request, logRequestsTile bool, logRequestsCache bool) {
 		for r := range requests {
@@ -81,7 +82,10 @@ func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, logger *r
 		awsSessionCache,
 		publicKey,
 		privateKey,
-		validMethods)
+		validMethods,
+		version,
+		gitBranch,
+		gitCommit)
 
 	return r, nil
 }
@@ -145,8 +149,14 @@ func initPrivateKey(privateKeyString string, privateKeyUri string, s3_client *s3
 func serveFunction(cmd *cobra.Command, args []string) {
 
 	v := viper.New()
-	v.BindPFlags(cmd.PersistentFlags())
-	v.BindPFlags(cmd.Flags())
+	err := v.BindPFlags(cmd.PersistentFlags())
+	if err != nil {
+		panic(err)
+	}
+	err = v.BindPFlags(cmd.Flags())
+	if err != nil {
+		panic(err)
+	}
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	v.AutomaticEnv() // set environment variables to overwrite config
 	util.MergeConfigs(v, v.GetStringArray("config-uri"))
@@ -228,8 +238,8 @@ func serveFunction(cmd *cobra.Command, args []string) {
 
 	infoWriter, err := grw.WriteToResource(infoDestination, infoCompression, true, s3_client)
 	if err != nil {
-		errorWriter.WriteError(errors.Wrap(err, "error creating log writer"))
-		errorWriter.Close()
+		errorWriter.WriteError(errors.Wrap(err, "error creating log writer")) // #nosec
+		errorWriter.Close()                                                   // #nosec
 		os.Exit(1)
 	}
 
@@ -278,7 +288,20 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	errorsChannel := make(chan interface{}, 10000)
 	requests := make(chan request.Request, 10000)
 
-	handler, err := NewRouter(v, railgunCatalog, logger, publicKey, privateKey, validMethods, errorsChannel, requests, messages, verbose)
+	handler, err := NewRouter(
+	  v,
+	  railgunCatalog,
+	  logger,
+	  publicKey,
+	  privateKey,
+	  validMethods,
+	  errorsChannel,
+	  requests,
+	  messages,
+	  railgun.Version,
+	  gitBranch,
+	  gitCommit,
+	  verbose)
 	if err != nil {
 		logger.Fatal(errors.Wrap(err, "error creating new router"))
 	}
@@ -337,8 +360,11 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		logger.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownWait)
 		defer cancel()
-		srv.Shutdown(ctx)
+		err := srv.Shutdown(ctx)
 		fmt.Println("received signal for graceful shutdown of server")
+		if err != nil {
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 
@@ -380,7 +406,7 @@ func init() {
 	serveCmd.Flags().Duration("http-graceful-shutdown-wait", time.Second*15, "the duration to wait for graceful shutdown")
 
 	// Cache Flags
-	serveCmd.Flags().DurationP("cache-default-expiration", "", time.Minute*5, "the default exipration for items in the cache")
+	serveCmd.Flags().DurationP("cache-default-expiration", "", time.Minute*5, "the default expiration for items in the cache")
 	serveCmd.Flags().DurationP("cache-cleanup-interval", "", time.Minute*10, "the cleanup interval for the cache")
 
 	// Input Flags

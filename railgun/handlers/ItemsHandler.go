@@ -138,13 +138,14 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		}
 		if len(inputFormat) == 0 || len(inputCompression) == 0 {
 			_, inputPath := grw.SplitUri(inputUriString)
-			_, inputFormatGuess, inputCompressionGuess := util.SplitNameFormatCompression(inputPath)
+			_, inputFormatGuess, _ := util.SplitNameFormatCompression(inputPath)
 			if len(inputFormat) == 0 {
 				inputFormat = inputFormatGuess
 			}
-			if len(inputCompression) == 0 {
+			/* Has no effect since too late, since already created grw.Reader
+			  if len(inputCompression) == 0 {
 				inputCompression = inputCompressionGuess
-			}
+			}*/
 		}
 		if len(inputFormat) == 0 {
 			return errors.New("Error: Provided no --input-format and could not infer from resource.\nRun \"railgun --help\" for more information.")
@@ -189,7 +190,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 	if err != nil {
 		return errors.Wrap(err, "error converting output")
 	}
-	w.Write(outputBytes)
+	w.Write(outputBytes) // #nosec
 
 	return nil
 

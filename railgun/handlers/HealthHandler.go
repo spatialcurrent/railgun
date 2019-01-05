@@ -17,6 +17,7 @@ import (
 
 import (
 	"github.com/gorilla/mux"
+	//"github.com/spatialcurrent/railgun/railgun"
 	"github.com/spatialcurrent/railgun/railgun/middleware"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
@@ -61,8 +62,11 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		obj := map[string]interface{}{
 			"status": "ok",
+			"version": h.Version,
+			"gitBranch": h.GitBranch,
+			"gitCommit": h.GitCommit,
 		}
-		err := h.RespondWithObject(w, http.StatusOK, obj, format)
+		err := h.RespondWithObject(w, http.StatusOK, obj, format, "")
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)

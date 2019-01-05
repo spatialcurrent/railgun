@@ -49,6 +49,9 @@ type BaseHandler struct {
 	SessionDuration time.Duration
 	ValidMethods    []string
 	Debug           bool
+	Version string
+	GitBranch string
+	GitCommit string
 }
 
 func (h *BaseHandler) SendDebug(message interface{}) {
@@ -187,7 +190,8 @@ func (h *BaseHandler) ParseBody(inputBytes []byte, format string) (interface{}, 
 	return inputObject, nil
 }
 
-func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, obj interface{}, format string) error {
+/* #nosec */
+func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, obj interface{}, format string, filename string) error {
 
 	if format == "html" {
 		code, err := json.MarshalIndent(obj, "", "    ")
@@ -263,6 +267,10 @@ func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, o
 	case "yaml", "yml":
 		contentType = "text/yaml"
 	}
+	
+	if len(filename) > 0 {
+	  w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+	}
 
 	w.Header().Set("Content-Type", contentType)
 	if statusCode != http.StatusOK {
@@ -290,7 +298,7 @@ func (h *BaseHandler) RespondWithError(w http.ResponseWriter, err error, format 
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
-	w.Write(b)
+	w.Write(b) // #nosec
 	return nil
 }
 
@@ -300,7 +308,7 @@ func (h *BaseHandler) RespondWithNotImplemented(w http.ResponseWriter, format st
 		return err
 	}
 	w.WriteHeader(http.StatusNotImplemented)
-	w.Write(b)
+	w.Write(b) // #nosec
 	return nil
 }
 

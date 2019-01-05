@@ -37,7 +37,7 @@ func (h *LayerMaskHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.Errors <- err
 		w.WriteHeader(http.StatusInternalServerError)
-		img.RespondWithImage(vars["ext"], w, img.CreateImage(color.RGBA{255, 0, 0, 220}))
+		img.RespondWithImage(vars["ext"], w, img.CreateImage(color.RGBA{255, 0, 0, 220})) // #nosec
 	}
 }
 

@@ -16,7 +16,10 @@ var gssCmd = &cobra.Command{
 	Short: "commands for go-simple-serializer (GSS)",
 	Long:  "commands for go-simple-serializer (GSS)",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Usage()
+		err := cmd.Usage()
+		if err != nil {
+			panic(err)
+		}
 	},
 }
 

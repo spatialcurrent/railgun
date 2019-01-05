@@ -9,24 +9,34 @@ package cli
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/spatialcurrent/cobra"
-	"github.com/spatialcurrent/go-dfl/dfl"
-	"github.com/spatialcurrent/go-reader-writer/grw"
-	"github.com/spatialcurrent/viper"
-	"gopkg.in/yaml.v2"
 	"os"
 	"reflect"
 	"strings"
 	"time"
 )
 
+import (
+	"github.com/pkg/errors"
+	"github.com/spatialcurrent/cobra"
+	"github.com/spatialcurrent/go-dfl/dfl"
+	"github.com/spatialcurrent/go-reader-writer/grw"
+	"github.com/spatialcurrent/railgun/railgun/util"
+	"github.com/spatialcurrent/viper"
+	"gopkg.in/yaml.v2"
+)
+
 var GO_DFL_DEFAULT_QUOTES = []string{"'", "\"", "`"}
 
-var evalViper = viper.New()
-
 func evalFunction(cmd *cobra.Command, args []string) {
-	v := evalViper
+
+	v := viper.New()
+	err := v.BindPFlags(cmd.Flags())
+	if err != nil {
+		panic(err)
+	}
+	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	v.AutomaticEnv() // set environment variables to overwrite config
+	util.MergeConfigs(v, v.GetStringArray("config-uri"))
 
 	start := time.Now()
 
@@ -39,7 +49,10 @@ func evalFunction(cmd *cobra.Command, args []string) {
 	sql := v.GetBool("sql")
 
 	if len(inputExpression) == 0 && len(inputFile) == 0 {
-		cmd.Usage()
+		err := cmd.Usage()
+		if err != nil {
+			panic(err)
+		}
 		os.Exit(0)
 	}
 
@@ -212,9 +225,5 @@ func init() {
 	evalCmd.Flags().BoolP("dry-run", "d", false, "parse and compile expression, but do not evaluate against context")
 	evalCmd.Flags().BoolP("pretty", "p", false, "print pretty output")
 	evalCmd.Flags().BoolP("sql", "s", false, "print SQL versio of expression to output")
-
-	// Bind to Viper
-	evalViper.BindPFlags(evalCmd.PersistentFlags())
-	evalViper.BindPFlags(evalCmd.Flags())
 
 }

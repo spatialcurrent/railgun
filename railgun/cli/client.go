@@ -30,7 +30,10 @@ func initViper(cmd *cobra.Command) *viper.Viper {
 	v := viper.New()
 	//v.BindPFlags(cmd.InheritedFlags())
 	//v.BindPFlags(cmd.PersistentFlags())
-	v.BindPFlags(cmd.Flags())
+	err := v.BindPFlags(cmd.Flags())
+	if err != nil {
+		panic(err)
+	}
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	v.AutomaticEnv() // set environment variables to overwrite config
 	util.MergeConfigs(v, v.GetStringArray("config-uri"))
@@ -131,9 +134,18 @@ func MakeRequest(input *RequestInput, outputWriter grw.ByteWriteCloser, errorWri
 		return errors.New(string(outputBytes))
 	}
 
-	outputWriter.Write(outputBytes)
-	outputWriter.WriteString("\n")
-	outputWriter.Flush()
+	_, err = outputWriter.Write(outputBytes)
+	if err != nil {
+		return err
+	}
+	_, err = outputWriter.WriteString("\n")
+	if err != nil {
+		return err
+	}
+	err = outputWriter.Flush()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -142,21 +154,36 @@ func handleList(url string, outputWriter grw.ByteWriteCloser, errorWriter grw.By
 
 	brc, _, err := grw.ReadHTTPFile(url, "", false)
 	if err != nil {
-		errorWriter.WriteError(err)
-		errorWriter.Flush()
+		errorWriter.WriteError(err) // #nosec
+		errorWriter.Flush()         // #nosec
 		os.Exit(1)
 	}
 
 	outputBytes, err := brc.ReadAllAndClose()
 	if err != nil {
-		errorWriter.WriteError(err)
-		errorWriter.Flush()
+		errorWriter.WriteError(err) // #nosec
+		errorWriter.Flush()         // #nosec
 		os.Exit(1)
 	}
 
-	outputWriter.Write(outputBytes)
-	outputWriter.WriteString("\n")
-	outputWriter.Flush()
+	_, err = outputWriter.Write(outputBytes)
+	if err != nil {
+		errorWriter.WriteError(err) // #nosec
+		errorWriter.Flush()         // #nosec
+		os.Exit(1)
+	}
+	_, err = outputWriter.WriteString("\n")
+	if err != nil {
+		errorWriter.WriteError(err) // #nosec
+		errorWriter.Flush()         // #nosec
+		os.Exit(1)
+	}
+	err = outputWriter.Flush()
+	if err != nil {
+		errorWriter.WriteError(err) // #nosec
+		errorWriter.Flush()         // #nosec
+		os.Exit(1)
+	}
 }
 
 func newPostCommand(use string, short string, long string, path string, params []string, inputType reflect.Type) *cobra.Command {
@@ -237,8 +264,8 @@ func newPostCommand(use string, short string, long string, path string, params [
 			}(errorWriter)
 
 			if err != nil {
-				errorWriter.WriteError(err)
-				errorWriter.Flush()
+				errorWriter.WriteError(err) // #nosec
+				errorWriter.Flush()         // #nosec
 				os.Exit(1)
 			}
 
@@ -305,8 +332,8 @@ func newRestCommand(use string, short string, long string, path string, method s
 			}(errorWriter)
 
 			if err != nil {
-				errorWriter.WriteError(err)
-				errorWriter.Flush()
+				errorWriter.WriteError(err) // #nosec
+				errorWriter.Close()         // #nosec
 				os.Exit(1)
 			}
 
@@ -321,7 +348,10 @@ func init() {
 		Short: "client commands for interacting with Railgun Server",
 		Long:  "client commands for interacting with Railgun Server",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Usage()
+			err := cmd.Usage()
+			if err != nil {
+				panic(err)
+			}
 		},
 	}
 
@@ -384,8 +414,8 @@ func init() {
 			}(errorWriter)
 
 			if err != nil {
-				errorWriter.WriteError(err)
-				errorWriter.Flush()
+				errorWriter.WriteError(err) // #nosec
+				errorWriter.Close()         // #nosec
 				os.Exit(1)
 			}
 
@@ -401,7 +431,10 @@ func init() {
 		Short: "interact with workspaces on Railgun Server",
 		Long:  "interact with workspaces on Railgun Server",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Usage()
+			err := cmd.Usage()
+			if err != nil {
+				panic(err)
+			}
 		},
 	}
 	clientCmd.AddCommand(workspacesCmd)
@@ -413,7 +446,10 @@ func init() {
 		Short: "interact with datastores on Railgun Server",
 		Long:  "interact with datastores on Railgun Server",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Usage()
+			err := cmd.Usage()
+			if err != nil {
+				panic(err)
+			}
 		},
 	}
 	clientCmd.AddCommand(datastoresCmd)
@@ -425,7 +461,10 @@ func init() {
 		Short: "interact with layers on Railgun Server",
 		Long:  "interact with layers on Railgun Server",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Usage()
+			err := cmd.Usage()
+			if err != nil {
+				panic(err)
+			}
 		},
 	}
 	clientCmd.AddCommand(layersCmd)
@@ -437,7 +476,10 @@ func init() {
 		Short: "interact with processes on Railgun Server",
 		Long:  "interact with processes on Railgun Server",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Usage()
+			err := cmd.Usage()
+			if err != nil {
+				panic(err)
+			}
 		},
 	}
 	clientCmd.AddCommand(processesCmd)
@@ -449,7 +491,10 @@ func init() {
 		Short: "interact with services on Railgun Server",
 		Long:  "interact with services on Railgun Server",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Usage()
+			err := cmd.Usage()
+			if err != nil {
+				panic(err)
+			}
 		},
 	}
 	clientCmd.AddCommand(servicesCmd)
@@ -470,7 +515,10 @@ func init() {
 		Short: "interact with jobs on Railgun Server",
 		Long:  "interact with jobs on Railgun Server",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Usage()
+			err := cmd.Usage()
+			if err != nil {
+				panic(err)
+			}
 		},
 	}
 	clientCmd.AddCommand(jobsCmd)
@@ -491,7 +539,10 @@ func init() {
 		Short: "interact with workflows on Railgun Server",
 		Long:  "interact with workflows on Railgun Server",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Usage()
+			err := cmd.Usage()
+			if err != nil {
+				panic(err)
+			}
 		},
 	}
 	clientCmd.AddCommand(workflowsCmd)

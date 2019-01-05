@@ -8,16 +8,23 @@ echo "Running unit tests"
 echo "******************"
 echo "Using gometalinter with misspell, vet, ineffassign, and gosec"
 echo "Testing $DIR/../railgun"
-gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun
+# removed --enable=misspell, until I found out how to give custom dictionary
+gometalinter --deadline=60s --misspell-locale=US --disable-all  --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun
+echo "Testing $DIR/../railgun/catalog"
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/catalog
 echo "Testing $DIR/../railgun/cli"
-gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/ci
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/cli
 echo "Testing $DIR/../railgun/geo"
-gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/geo
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/geo
 echo "Testing $DIR/../railgun/handlers"
-gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/handlers
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/handlers
+echo "Testing $DIR/../railgun/logger"
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/logger
+echo "Testing $DIR/../railgun/middleware"
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/middleware
 echo "Testing $DIR/../railgun/img"
-gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/img
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/img
 echo "Testing $DIR/../railgun/named"
-gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/named
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/named
 echo "Testing $DIR/../railgun/railgunerrors"
-gometalinter --misspell-locale=US --disable-all --enable=misspell --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/railgunerrors
+gometalinter --deadline=60s --misspell-locale=US --disable-all --enable=vet --enable=ineffassign --enable=gosec $DIR/../railgun/railgunerrors

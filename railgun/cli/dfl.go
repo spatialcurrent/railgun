@@ -16,7 +16,10 @@ var dflCmd = &cobra.Command{
 	Short: "commands for go-dfl (DFL)",
 	Long:  "commands for go-dfl (DFL)",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Usage()
+		err := cmd.Usage()
+		if err != nil {
+			panic(err)
+		}
 	},
 }
 

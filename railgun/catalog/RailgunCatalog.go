@@ -603,7 +603,12 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_clie
 						logger.Error(err)
 						continue
 					}
-					c.Add(obj)
+					err = c.Add(obj)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading workspace"))
+						logger.Error(err)
+						continue
+					}
 					messages <- map[string]interface{}{
 						"init": map[string]interface{}{
 							"workspace": map[string]interface{}{"name": obj.Name},
@@ -627,7 +632,12 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_clie
 						logger.Error(err)
 						continue
 					}
-					c.Add(obj)
+					err = c.Add(obj)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading data store"))
+						logger.Error(err)
+						continue
+					}
 					messages <- map[string]interface{}{
 						"init": map[string]interface{}{
 							"datastore": map[string]interface{}{"name": obj.Name},
@@ -651,7 +661,12 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_clie
 						logger.Error(err)
 						continue
 					}
-					c.Add(obj)
+					err = c.Add(obj)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading layer"))
+						logger.Error(err)
+						continue
+					}
 					messages <- map[string]interface{}{
 						"init": map[string]interface{}{
 							"layer": map[string]interface{}{"name": obj.Name},
@@ -675,7 +690,12 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_clie
 						logger.Error(err)
 						continue
 					}
-					c.Add(obj)
+					err = c.Add(obj)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading process"))
+						logger.Error(err)
+						continue
+					}
 					messages <- map[string]interface{}{
 						"init": map[string]interface{}{
 							"process": map[string]interface{}{"name": obj.Name},
@@ -699,7 +719,12 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_clie
 						logger.Error(err)
 						continue
 					}
-					c.Add(obj)
+					err = c.Add(obj)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading service"))
+						logger.Error(err)
+						continue
+					}
 					messages <- map[string]interface{}{
 						"init": map[string]interface{}{
 							"service": map[string]interface{}{"name": obj.Name},
@@ -723,7 +748,12 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_clie
 						logger.Error(err)
 						continue
 					}
-					c.Add(obj)
+					err = c.Add(obj)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading job"))
+						logger.Error(err)
+						continue
+					}
 					messages <- map[string]interface{}{
 						"init": map[string]interface{}{
 							"job": map[string]interface{}{"name": obj.Name},
@@ -747,7 +777,12 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_clie
 						logger.Error(err)
 						continue
 					}
-					c.Add(obj)
+					err = c.Add(obj)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading workflow"))
+						logger.Error(err)
+						continue
+					}
 					messages <- map[string]interface{}{
 						"init": map[string]interface{}{
 							"workflow": map[string]interface{}{"name": obj.Name},
@@ -791,7 +826,10 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 	}
 
 	for _, workspace := range workspacesByName {
-		c.Add(workspace)
+		err = c.Add(workspace)
+		if err != nil {
+			return err
+		}
 	}
 
 	datastoresByName, err := func(datastores []string, configSkipErrors bool) (map[string]*core.DataStore, error) {
@@ -841,7 +879,10 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 	}
 
 	for _, datastore := range datastoresByName {
-		c.Add(datastore)
+		err = c.Add(datastore)
+		if err != nil {
+			return err
+		}
 	}
 
 	layersByName, err := func(layers []string) (map[string]*core.Layer, error) {
@@ -868,7 +909,10 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 	}
 
 	for _, layer := range layersByName {
-		c.Add(layer)
+		err = c.Add(layer)
+		if err != nil {
+			return err
+		}
 	}
 
 	processesByName, err := func(processes []string) (map[string]*core.Process, error) {
@@ -895,7 +939,10 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 	}
 
 	for _, process := range processesByName {
-		c.Add(process)
+		err = c.Add(process)
+		if err != nil {
+			return err
+		}
 	}
 
 	servicesByName, err := func(services []string, configSkipErrors bool) (map[string]*core.Service, error) {
@@ -927,7 +974,10 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 	}
 
 	for _, service := range servicesByName {
-		c.Add(service)
+		err = c.Add(service)
+		if err != nil {
+			return err
+		}
 	}
 
 	jobsByName, err := func(jobs []string, configSkipErrors bool) (map[string]*core.Job, error) {
@@ -959,7 +1009,10 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 	}
 
 	for _, job := range jobsByName {
-		c.Add(job)
+		err = c.Add(job)
+		if err != nil {
+			return err
+		}
 	}
 
 	workflowsByName, err := func(workflows []string, configSkipErrors bool) (map[string]*core.Workflow, error) {
@@ -991,7 +1044,10 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 	}
 
 	for _, workflow := range workflowsByName {
-		c.Add(workflow)
+		err = c.Add(workflow)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -1038,7 +1094,7 @@ func (c *RailgunCatalog) SaveToUri(uri string, s3_client *s3.S3) error {
 
 		_, err = outputWriter.Write(b)
 		if err != nil {
-			outputWriter.Close()
+			outputWriter.Close() // #nosec
 			return errors.Wrap(err, "error saving catalog")
 		}
 

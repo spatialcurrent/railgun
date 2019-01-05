@@ -9,19 +9,29 @@ package cli
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/spatialcurrent/cobra"
-	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/viper"
 	"io/ioutil"
 	"os"
 	"strings"
 )
 
-var convertViper = viper.New()
+import (
+	"github.com/pkg/errors"
+	"github.com/spatialcurrent/cobra"
+	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/railgun/railgun/util"
+	"github.com/spatialcurrent/viper"
+)
 
 func convertFunction(cmd *cobra.Command, args []string) {
-	v := convertViper
+
+	v := viper.New()
+	err := v.BindPFlags(cmd.Flags())
+	if err != nil {
+		panic(err)
+	}
+	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	v.AutomaticEnv() // set environment variables to overwrite config
+	util.MergeConfigs(v, v.GetStringArray("config-uri"))
 
 	verbose := v.GetBool("verbose")
 	inputFormat := v.GetString("input-format")
@@ -60,7 +70,10 @@ func init() {
 	gssCmd.AddCommand(convertCmd)
 
 	convertCmd.Flags().StringP("input-format", "i", "", "the input format: "+strings.Join(gss.Formats, ", "))
-	convertCmd.MarkFlagRequired("input-format")
+	err := convertCmd.MarkFlagRequired("input-format")
+	if err != nil {
+		panic(err)
+	}
 	convertCmd.Flags().StringP("input-comment", "c", "", "the input comment character, e.g., #.  Commented lines are not sent to output")
 	convertCmd.Flags().BoolP("input-lazy-quotes", "", false, "allows lazy quotes for CSV and TSV")
 	convertCmd.Flags().StringSliceP("input-header", "", gss.NoHeader, "the input header, if the input has no header")
@@ -68,12 +81,11 @@ func init() {
 	convertCmd.Flags().Int("input-limit", gss.NoLimit, "maximum number of objects to read from input")
 
 	convertCmd.Flags().StringP("output-format", "o", "", "the output format: "+strings.Join(gss.Formats, ", "))
-	convertCmd.MarkFlagRequired("output-format")
+	err = convertCmd.MarkFlagRequired("output-format")
+	if err != nil {
+		panic(err)
+	}
 	convertCmd.Flags().StringArray("output-header", gss.NoHeader, "the output header")
 	convertCmd.Flags().Int("output-limit", gss.NoLimit, "maximum number of objects to send to output")
-
-	// Bind to Viper
-	convertViper.BindPFlags(convertCmd.PersistentFlags())
-	convertViper.BindPFlags(convertCmd.Flags())
 
 }

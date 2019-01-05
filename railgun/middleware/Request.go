@@ -5,48 +5,48 @@ import (
 )
 
 type Request struct {
-  Client string
+	Client  string
 	Host    string
 	Url     string
 	Method  string
-	Start  *time.Time
-	End    *time.Time
+	Start   *time.Time
+	End     *time.Time
 	Subject string
-	Vars map[string]string
+	Vars    map[string]string
 	Handler string
-	Error error
+	Error   error
 }
 
 func NewRequest(client string, host string, url string, method string, start *time.Time, subject string, handler string, err error) Request {
 	return Request{
-	  Client: client,
+		Client:  client,
 		Host:    host,
 		Url:     url,
 		Method:  method,
-		Start:    start,
-		End: nil,
+		Start:   start,
+		End:     nil,
 		Subject: subject,
-		Vars: map[string]string{},
+		Vars:    map[string]string{},
 		Handler: handler,
-		Error: err,
+		Error:   err,
 	}
 }
 
 func (r Request) Map() map[string]interface{} {
 	m := map[string]interface{}{
-	  "client": r.Client,
+		"client": r.Client,
 		"host":   r.Host,
 		"url":    r.Url,
 		"method": r.Method,
 	}
 	if r.Start != nil {
-	  m["start"] = r.Start.Format(time.RFC3339)
+		m["start"] = r.Start.Format(time.RFC3339)
 	}
 	if r.End != nil {
-	  m["end"] = r.End.Format(time.RFC3339)
+		m["end"] = r.End.Format(time.RFC3339)
 	}
 	if r.Start != nil && r.End != nil {
-	  m["duration"] = r.End.Sub(*r.Start).String()
+		m["duration"] = r.End.Sub(*r.Start).String()
 	}
 	if len(r.Subject) > 0 {
 		m["subject"] = r.Subject

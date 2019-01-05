@@ -64,7 +64,7 @@ func (h *WorkflowExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
@@ -126,7 +126,7 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 		errorBuffers[job.Name] = errorBuffer
 
 		if job.Output != nil {
-			errorWriter.WriteError(&rerrors.ErrMissingRequiredParameter{Name: "output"})
+			errorWriter.WriteError(&rerrors.ErrMissingRequiredParameter{Name: "output"}) // #nosec
 			exitCodes[job.Name] = 1
 			continue
 		}
@@ -144,21 +144,21 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 
 		_, inputUri, err := dfl.EvaluateString(job.Service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 		if err != nil {
-			errorWriter.WriteError(errors.Wrap(err, "invalid data store uri"))
+			errorWriter.WriteError(errors.Wrap(err, "invalid data store uri")) // #nosec
 			exitCodes[job.Name] = 1
 			continue
 		}
 
 		inputReader, _, err := grw.ReadFromResource(inputUri, job.Service.DataStore.Compression, 4096, false, nil)
 		if err != nil {
-			errorWriter.WriteError(errors.Wrap(err, "error opening resource at uri "+inputUri))
+			errorWriter.WriteError(errors.Wrap(err, "error opening resource at uri "+inputUri)) // #nosec
 			exitCodes[job.Name] = 1
 			continue
 		}
 
 		inputBytes, err := inputReader.ReadAllAndClose()
 		if err != nil {
-			errorWriter.WriteError(errors.Wrap(err, "error reading from resource at uri "+inputUri))
+			errorWriter.WriteError(errors.Wrap(err, "error reading from resource at uri "+inputUri)) // #nosec
 			exitCodes[job.Name] = 1
 			continue
 		}
@@ -167,21 +167,21 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 
 		inputType, err := gss.GetType(inputBytes, inputFormat)
 		if err != nil {
-			errorWriter.WriteError(errors.Wrap(err, "error getting type for input"))
+			errorWriter.WriteError(errors.Wrap(err, "error getting type for input")) // #nosec
 			exitCodes[job.Name] = 1
 			continue
 		}
 
 		inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, "", false, gss.NoSkip, gss.NoLimit, inputType, false, false)
 		if err != nil {
-			errorWriter.WriteError(errors.Wrap(err, "error deserializing input using format "+inputFormat))
+			errorWriter.WriteError(errors.Wrap(err, "error deserializing input using format "+inputFormat)) // #nosec
 			exitCodes[job.Name] = 1
 			continue
 		}
 
 		_, outputObject, err := job.Service.Process.Node.Evaluate(variables, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 		if err != nil {
-			errorWriter.WriteError(errors.Wrap(err, "error evaluating process with name "+job.Service.Process.Name))
+			errorWriter.WriteError(errors.Wrap(err, "error evaluating process with name "+job.Service.Process.Name)) // #nosec
 			exitCodes[job.Name] = 1
 			continue
 		}
@@ -190,35 +190,35 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 
 			outputBytes, err := gss.SerializeBytes(outputObject, job.Output.Format, []string{}, gss.NoLimit)
 			if err != nil {
-				errorWriter.WriteError(errors.Wrap(err, "error serializing output using format "+job.Output.Format))
+				errorWriter.WriteError(errors.Wrap(err, "error serializing output using format "+job.Output.Format)) // #nosec
 				exitCodes[job.Name] = 1
 				continue
 			}
 
 			_, outputUri, err := dfl.EvaluateString(job.Output.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 			if err != nil {
-				errorWriter.WriteError(errors.Wrap(err, "error evaluating output uri"))
+				errorWriter.WriteError(errors.Wrap(err, "error evaluating output uri")) // #nosec
 				exitCodes[job.Name] = 1
 				continue
 			}
 
 			outputWriter, err := grw.WriteToResource(outputUri, job.Output.Compression, false, nil)
 			if err != nil {
-				errorWriter.WriteError(errors.Wrap(err, "error opening output for job "+job.Name))
+				errorWriter.WriteError(errors.Wrap(err, "error opening output for job "+job.Name)) // #nosec
 				exitCodes[job.Name] = 1
 				continue
 			}
 
 			_, err = outputWriter.Write(outputBytes)
 			if err != nil {
-				errorWriter.WriteError(errors.Wrap(err, "error writing output for job "+job.Name))
+				errorWriter.WriteError(errors.Wrap(err, "error writing output for job "+job.Name)) // #nosec
 				exitCodes[job.Name] = 1
 				continue
 			}
 
 			err = outputWriter.Close()
 			if err != nil {
-				errorWriter.WriteError(errors.Wrap(err, "error closing output for job "+job.Name))
+				errorWriter.WriteError(errors.Wrap(err, "error closing output for job "+job.Name)) // #nosec
 				exitCodes[job.Name] = 1
 				continue
 			}

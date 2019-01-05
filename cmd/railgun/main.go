@@ -7,8 +7,15 @@
 
 package main
 
-import "github.com/spatialcurrent/railgun/railgun/cli"
+import (
+  "github.com/spatialcurrent/railgun/railgun/cli"
+)
+
+// GitCommit & Branch are empty unless set as a build flag
+// See https://blog.alexellis.io/inject-build-time-vars-golang/
+var gitBranch string
+var gitCommit string
 
 func main() {
-	cli.Execute()
+	cli.Execute(gitBranch, gitCommit)
 }
