@@ -50,7 +50,7 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, "", format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
@@ -72,7 +72,7 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, "", format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
@@ -94,7 +94,7 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, "", format)
+			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
