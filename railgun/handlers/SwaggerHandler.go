@@ -388,6 +388,36 @@ func (h *SwaggerHandler) BuildSwaggerDocument() (swagger.Document, error) {
 				},
 			},
 		},
+		"/services/{name}/download.{ext}": swagger.Path{
+			Get: swagger.Operation{
+				Description: "execute a service on the Railgun Server with the given job input and download the input as a file",
+				Tags:        []string{"Services"},
+				Produces: []string{
+					"application/json",
+					"text/yaml",
+					"application/ubjson",
+					"application/toml",
+				},
+				Parameters: []swagger.Parameter{
+					swagger.Parameter{
+						Name:        "name",
+						Type:        "string",
+						Description: fmt.Sprintf("the name of the %s to execute on the Railgun Server", "service"),
+						In:          "path",
+						Required:    true,
+					},
+					params["ext"],
+				},
+				Responses: map[string]swagger.Response{
+					"200": swagger.Response{
+						Description: "OK",
+					},
+					"404": swagger.Response{
+						Description: fmt.Sprintf("Not found. %s with provided name was not found.", "service"),
+					},
+				},
+			},
+		},
 		"/jobs/{name}/exec.{ext}": swagger.Path{
 			Post: swagger.Operation{
 				Description: "execute a job for a service on the Railgun Server",

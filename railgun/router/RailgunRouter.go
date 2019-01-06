@@ -153,6 +153,8 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 	}
 
 	r.AddServiceExecHandler("service_exec", "/services/{name}/exec.{ext}")
+	
+	r.AddServiceDownloadHandler("service_download", "/services/{name}/download.{ext}")
 
 	r.AddServiceTileHandler("service_tile", "/services/{name}/tiles/{z}/{x}/{y}.{ext}")
 
@@ -249,6 +251,13 @@ func (r *RailgunRouter) AddHomeHandler(name string, path string) {
 
 func (r *RailgunRouter) AddServiceExecHandler(name string, path string) {
 	r.Methods("POST", "OPTIONS").Name(name).Path(path).Handler(&handlers.ServiceExecHandler{
+		BaseHandler: r.NewBaseHandler(),
+		Cache:       gocache.New(5*time.Minute, 10*time.Minute),
+	})
+}
+
+func (r *RailgunRouter) AddServiceDownloadHandler(name string, path string) {
+	r.Methods("GET").Name(name).Path(path).Handler(&handlers.ServiceDownloadHandler{
 		BaseHandler: r.NewBaseHandler(),
 		Cache:       gocache.New(5*time.Minute, 10*time.Minute),
 	})
