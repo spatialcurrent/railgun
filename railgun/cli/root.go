@@ -20,7 +20,7 @@ import (
 )
 
 import (
-  "github.com/spatialcurrent/railgun/railgun"
+	"github.com/spatialcurrent/railgun/railgun"
 )
 
 var cfgFile string
@@ -40,21 +40,21 @@ var rootCmd = &cobra.Command{
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(branch string, commit string) {
-  // Set Global Variables
-  gitBranch = branch
-  gitCommit = commit
-  
+	// Set Global Variables
+	gitBranch = branch
+	gitCommit = commit
+
 	rootCmd.AddCommand(&cobra.Command{
-  	Use:   "version",
-  	Short: "print version information to stdout",
-  	Long:  "print version information to stdout",
-  	Run: func(cmd *cobra.Command, args []string) {
-  		fmt.Println("Version:"+railgun.Version)
-  		fmt.Println("Branch: "+branch)
-  		fmt.Println("Commit: "+commit)
-  	},
-  })
-  
+		Use:   "version",
+		Short: "print version information to stdout",
+		Long:  "print version information to stdout",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Version:" + railgun.Version)
+			fmt.Println("Branch: " + branch)
+			fmt.Println("Commit: " + commit)
+		},
+	})
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, err.Error()+"\n")
 		os.Exit(1)

@@ -31,9 +31,9 @@ type RailgunRouter struct {
 	ValidMethods    []string
 	SessionDuration time.Duration
 	Debug           bool
-	Version string
-	GitBranch string
-	GitCommit string
+	Version         string
+	GitBranch       string
+	GitCommit       string
 }
 
 func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, requests chan request.Request, messages chan interface{}, errors chan interface{}, awsSessionCache *gocache.Cache, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, version string, gitBranch string, gitCommit string) *RailgunRouter {
@@ -47,9 +47,9 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 		ValidMethods:    validMethods,
 		SessionDuration: v.GetDuration("jwt-session-duration"),
 		Debug:           v.GetBool("verbose"),
-		Version: version,
-		GitBranch: gitBranch,
-		GitCommit: gitCommit,
+		Version:         version,
+		GitBranch:       gitBranch,
+		GitCommit:       gitCommit,
 	}
 
 	if v.GetBool("http-middleware-recover") {
@@ -153,7 +153,7 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 	}
 
 	r.AddServiceExecHandler("service_exec", "/services/{name}/exec.{ext}")
-	
+
 	r.AddServiceDownloadHandler("service_download", "/services/{name}/download.{ext}")
 
 	r.AddServiceTileHandler("service_tile", "/services/{name}/tiles/{z}/{x}/{y}.{ext}")
@@ -182,9 +182,9 @@ func (r *RailgunRouter) NewBaseHandler() *handlers.BaseHandler {
 		ValidMethods:    r.ValidMethods,
 		SessionDuration: r.SessionDuration,
 		Debug:           r.Debug,
-		Version: r.Version,
-		GitBranch: r.GitBranch,
-		GitCommit: r.GitCommit,
+		Version:         r.Version,
+		GitBranch:       r.GitBranch,
+		GitCommit:       r.GitCommit,
 	}
 }
 

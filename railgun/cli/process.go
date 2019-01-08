@@ -603,7 +603,13 @@ func processFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	logger := rlogger.New(infoWriter, processConfig.InfoFormat, errorWriter, processConfig.ErrorFormat)
+	//logger := rlogger.New(infoWriter, processConfig.InfoFormat, errorWriter, processConfig.ErrorFormat)
+
+	logger := rlogger.New(
+		map[string]int{"info": 0, "error": 1},
+		[]grw.ByteWriteCloser{infoWriter, errorWriter},
+		[]string{processConfig.InfoFormat, processConfig.ErrorFormat},
+	)
 
 	errorsChannel := make(chan interface{}, 1000)
 	messages := make(chan interface{}, 1000)

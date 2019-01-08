@@ -61,8 +61,8 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		obj := map[string]interface{}{
-			"status": "ok",
-			"version": h.Version,
+			"status":    "ok",
+			"version":   h.Version,
 			"gitBranch": h.GitBranch,
 			"gitCommit": h.GitCommit,
 		}

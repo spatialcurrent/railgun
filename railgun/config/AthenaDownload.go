@@ -15,12 +15,12 @@ type AthenaDownload struct {
 	Output           *Output
 	Temp             *Temp
 	Dfl              *Dfl
-	InfoDestination   string `viper:"info-destination"`
-	InfoCompression   string `viper:"info-compression"`
-	InfoFormat string `viper:"info-format"`
+	InfoDestination  string `viper:"info-destination"`
+	InfoCompression  string `viper:"info-compression"`
+	InfoFormat       string `viper:"info-format"`
 	ErrorDestination string `viper:"error-destination"`
 	ErrorCompression string `viper:"error-compression"`
-	ErrorFormat string `viper:"error-format"`
+	ErrorFormat      string `viper:"error-format"`
 }
 
 func (a *AthenaDownload) AWSSessionOptions() session.Options {
@@ -62,11 +62,11 @@ func NewAthenaDownload() *AthenaDownload {
 		Output:           &Output{},
 		Temp:             &Temp{},
 		Dfl:              &Dfl{},
-		InfoDestination:   "",
-		InfoCompression:   "",
-		InfoFormat: "",
+		InfoDestination:  "",
+		InfoCompression:  "",
+		InfoFormat:       "",
 		ErrorDestination: "",
 		ErrorCompression: "",
-		ErrorFormat: "",
+		ErrorFormat:      "",
 	}
 }

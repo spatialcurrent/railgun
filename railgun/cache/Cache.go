@@ -42,22 +42,21 @@ func (c *Cache) Get(uri string, format string, compression string, bufferSize in
 		return false, nil, errors.Wrap(err, "error opening resource at uri "+uri)
 	}
 
-
 	inputByte, err := inputReader.ReadAllAndClose()
 	if err != nil {
 		return false, nil, errors.New("error reading from resource at uri " + uri)
 	}
 
-  /*
-	inputBytesEncrypted, err := inputReader.ReadAllAndClose()
-	if err != nil {
-		return false, nil, errors.New("error reading from resource at uri " + uri)
-	}
+	/*
+		inputBytesEncrypted, err := inputReader.ReadAllAndClose()
+		if err != nil {
+			return false, nil, errors.New("error reading from resource at uri " + uri)
+		}
 
-	inputBytesPlain, err := DecryptInput(inputBytesEncrypted, passphrase, salt)
-	if err != nil {
-		return false, nil, errors.Wrap(err, "error decoding input")
-	}*/
+		inputBytesPlain, err := DecryptInput(inputBytesEncrypted, passphrase, salt)
+		if err != nil {
+			return false, nil, errors.Wrap(err, "error decoding input")
+		}*/
 
 	inputType, err := gss.GetType(inputByte, format)
 	if err != nil {

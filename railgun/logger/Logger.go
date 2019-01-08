@@ -1,150 +1,139 @@
 package logger
 
 import (
-	"fmt"
+	//"fmt"
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 import (
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 )
 
 type Logger struct {
-	infoWriter  grw.ByteWriteCloser
-	infoFormat  string
-	errorWriter grw.ByteWriteCloser
-	errorFormat string
+	levels  map[string]int        // level --> position in writers
+	writers []grw.ByteWriteCloser // list of writers
+	formats []string              // list of formats for each writer
 }
 
-func New(infoWriter grw.ByteWriteCloser, infoFormat string, errorWriter grw.ByteWriteCloser, errorFormat string) *Logger {
+func New(levels map[string]int, writers []grw.ByteWriteCloser, formats []string) *Logger {
 	return &Logger{
-		infoWriter:  infoWriter,
-		infoFormat:  infoFormat,
-		errorWriter: errorWriter,
-		errorFormat: errorFormat,
+		levels:  levels,
+		writers: writers,
+		formats: formats,
 	}
-}
-
-func NewLoggerFromConfig(infoDestination string, infoCompression string, infoFormat string, errorDestination string, errorCompression string, errorFormat string, s3_client *s3.S3) *Logger {
-
-	errorWriter, err := grw.WriteToResource(errorDestination, errorCompression, true, s3_client)
-	if err != nil {
-		fmt.Println(errors.Wrap(err, "error creating error writer"))
-		os.Exit(1)
-	}
-
-	infoWriter, err := grw.WriteToResource(infoDestination, infoCompression, true, s3_client)
-	if err != nil {
-		errorWriter.WriteError(errors.Wrap(err, "error creating info writer")) // #nosec
-		errorWriter.Close()                                                    // #nosec
-		os.Exit(1)
-	}
-
-	return New(infoWriter, infoFormat, errorWriter, errorFormat)
 }
 
 func (l *Logger) Debug(obj interface{}) {
-	if err, ok := obj.(error); ok {
-		m := map[string]interface{}{"level": "debug", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if line, ok := obj.(string); ok {
-		m := map[string]interface{}{"level": "debug", "message": line}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if m, ok := obj.(map[string]string); ok {
-		m["level"] = "debug"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if m, ok := obj.(map[string]interface{}); ok {
-		m["level"] = "debug"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else {
-		l.infoWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
+	level := "debug"
+	position, ok := l.levels[level]
+	if !ok {
+		return
 	}
+	l.Line("debug", obj, l.writers[position], l.formats[position])
 }
 
 func (l *Logger) Info(obj interface{}) {
-	if err, ok := obj.(error); ok {
-		m := map[string]interface{}{"level": "info", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if line, ok := obj.(string); ok {
-		m := map[string]interface{}{"level": "info", "message": line}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if m, ok := obj.(map[string]string); ok {
-		m["level"] = "info"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if m, ok := obj.(map[string]interface{}); ok {
-		m["level"] = "info"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else {
-		l.infoWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
+	level := "info"
+	position, ok := l.levels[level]
+	if !ok {
+		return
 	}
+	l.Line("info", obj, l.writers[position], l.formats[position])
 }
 
 func (l *Logger) Warn(obj interface{}) {
-	if err, ok := obj.(error); ok {
-		m := map[string]interface{}{"level": "warn", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
-		l.errorWriter.WriteLine(gss.MustSerializeString(m, l.errorFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if line, ok := obj.(string); ok {
-		m := map[string]interface{}{"level": "warn", "message": line}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if m, ok := obj.(map[string]string); ok {
-		m["level"] = "warn"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if m, ok := obj.(map[string]interface{}); ok {
-		m["level"] = "warn"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else {
-		l.errorWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
+	level := "warn"
+	position, ok := l.levels[level]
+	if !ok {
+		return
 	}
+	l.Line("warn", obj, l.writers[position], l.formats[position])
 }
 
 func (l *Logger) Error(obj interface{}) {
+	level := "error"
+	position, ok := l.levels[level]
+	if !ok {
+		return
+	}
+	l.Line("error", obj, l.writers[position], l.formats[position])
+}
+
+func (l *Logger) Line(level string, obj interface{}, writer grw.ByteWriteCloser, format string) {
+	line := ""
+
 	if err, ok := obj.(error); ok {
-		m := map[string]interface{}{"level": "error", "error": strings.Replace(err.Error(), "\n", ": ", -1)}
-		l.errorWriter.WriteLine(gss.MustSerializeString(m, l.errorFormat, gss.NoHeader, gss.NoLimit)) // #nosec
-	} else if line, ok := obj.(string); ok {
-		m := map[string]interface{}{"level": "error", "message": line}
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
+		m := map[string]interface{}{
+			"level": level,
+			"msg":   strings.Replace(err.Error(), "\n", ": ", -1),
+			"ts":    time.Now().Format(time.RFC3339),
+		}
+		line = gss.MustSerializeString(m, format, gss.NoHeader, gss.NoLimit) // #nosec
+	} else if msg, ok := obj.(string); ok {
+		m := map[string]interface{}{
+			"level": level,
+			"msg":   msg,
+			"ts":    time.Now().Format(time.RFC3339),
+		}
+		line = gss.MustSerializeString(m, format, gss.NoHeader, gss.NoLimit) // #nosec
 	} else if m, ok := obj.(map[string]string); ok {
-		m["level"] = "error"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
+		m["level"] = level
+		m["ts"] = time.Now().Format(time.RFC3339)
+		line = gss.MustSerializeString(m, format, gss.NoHeader, gss.NoLimit) // #nosec
 	} else if m, ok := obj.(map[string]interface{}); ok {
-		m["level"] = "error"
-		l.infoWriter.WriteLine(gss.MustSerializeString(m, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
+		m["level"] = level
+		m["ts"] = time.Now().Format(time.RFC3339)
+		line = gss.MustSerializeString(m, format, gss.NoHeader, gss.NoLimit) // #nosec
 	} else {
-		l.errorWriter.WriteLine(gss.MustSerializeString(obj, l.infoFormat, gss.NoHeader, gss.NoLimit)) // #nosec
+		line = gss.MustSerializeString(obj, format, gss.NoHeader, gss.NoLimit) // #nosec
+	}
+
+	if len(line) > 0 {
+		writer.WriteLineSafe(line) // #nosec
 	}
 }
 
 func (l *Logger) Fatal(obj interface{}) {
-	l.infoWriter.Flush()  // #nosec
-	l.infoWriter.Close()  // #nosec
-	l.Error(obj)          // #nosec
-	l.errorWriter.Flush() // #nosec
-	l.errorWriter.Close() // #nosec
+	for _, w := range l.writers {
+		w.Lock()
+	}
+	for _, w := range l.writers {
+		w.Flush() // #nosec
+	}
+	l.Error(obj) // #nosec
+	for _, w := range l.writers {
+		w.Flush() // #nosec
+	}
+	for _, w := range l.writers {
+		w.Close() // #nosec
+	}
 	os.Exit(1)
 }
 
 func (l *Logger) Flush() {
-	l.infoWriter.Flush()  // #nosec
-	l.errorWriter.Flush() // #nosec
+	for _, w := range l.writers {
+		w.FlushSafe() // #nosec
+	}
 }
 
 func (l *Logger) Close() {
-	l.Flush()
-	l.infoWriter.Close()  // #nosec
-	l.errorWriter.Close() // #nosec
+	for _, w := range l.writers {
+		w.FlushSafe() // #nosec
+	}
+	for _, w := range l.writers {
+		w.CloseSafe() // #nosec
+	}
 }
 
 func (l *Logger) ListenInfo(messages chan interface{}, wg *sync.WaitGroup) {
 	go func(messages chan interface{}) {
 		for message := range messages {
 			l.Info(message)
-			l.infoWriter.Flush() // #nosec
+			l.Flush()
 		}
 		if wg != nil {
 			wg.Done()
@@ -156,7 +145,7 @@ func (l *Logger) ListenError(messages chan interface{}, wg *sync.WaitGroup) {
 	go func(messages chan interface{}) {
 		for message := range messages {
 			l.Error(message)
-			l.errorWriter.Flush() // #nosec
+			l.Flush()
 		}
 		if wg != nil {
 			wg.Done()

@@ -49,9 +49,9 @@ type BaseHandler struct {
 	SessionDuration time.Duration
 	ValidMethods    []string
 	Debug           bool
-	Version string
-	GitBranch string
-	GitCommit string
+	Version         string
+	GitBranch       string
+	GitCommit       string
 }
 
 func (h *BaseHandler) SendDebug(message interface{}) {
@@ -267,9 +267,9 @@ func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, o
 	case "yaml", "yml":
 		contentType = "text/yaml"
 	}
-	
+
 	if len(filename) > 0 {
-	  w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+		w.Header().Set("Content-Disposition", "attachment; filename="+filename)
 	}
 
 	w.Header().Set("Content-Type", contentType)

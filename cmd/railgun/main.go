@@ -8,7 +8,7 @@
 package main
 
 import (
-  "github.com/spatialcurrent/railgun/railgun/cli"
+	"github.com/spatialcurrent/railgun/railgun/cli"
 )
 
 // GitCommit & Branch are empty unless set as a build flag

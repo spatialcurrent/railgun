@@ -92,7 +92,7 @@ func (h *ServiceDownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (filename string, object interface{}, err error) {
 
 	ctx := r.Context()
-	
+
 	now := time.Now()
 	if v := ctx.Value("request"); v != nil {
 		if req, ok := v.(middleware.Request); ok {
@@ -121,7 +121,7 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 	if !ok {
 		return "", nil, &rerrors.ErrMissingRequiredParameter{Name: "name"}
 	}
-	
+
 	outputFilename := fmt.Sprintf("%s_%s.%s", serviceName, now.Format("20060102"), filepath.Ext(r.URL.Path))
 
 	service, ok := h.Catalog.GetService(serviceName)

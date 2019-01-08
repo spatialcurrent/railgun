@@ -243,7 +243,11 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	logger := rlogger.New(infoWriter, infoFormat, errorWriter, errorFormat)
+	logger := rlogger.New(
+		map[string]int{"info": 0, "error": 1},
+		[]grw.ByteWriteCloser{infoWriter, errorWriter},
+		[]string{infoFormat, errorFormat},
+	)
 
 	railgunCatalog := catalog.NewRailgunCatalog()
 
@@ -289,19 +293,19 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	requests := make(chan request.Request, 10000)
 
 	handler, err := NewRouter(
-	  v,
-	  railgunCatalog,
-	  logger,
-	  publicKey,
-	  privateKey,
-	  validMethods,
-	  errorsChannel,
-	  requests,
-	  messages,
-	  railgun.Version,
-	  gitBranch,
-	  gitCommit,
-	  verbose)
+		v,
+		railgunCatalog,
+		logger,
+		publicKey,
+		privateKey,
+		validMethods,
+		errorsChannel,
+		requests,
+		messages,
+		railgun.Version,
+		gitBranch,
+		gitCommit,
+		verbose)
 	if err != nil {
 		logger.Fatal(errors.Wrap(err, "error creating new router"))
 	}
