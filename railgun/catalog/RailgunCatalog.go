@@ -10,24 +10,33 @@ package catalog
 import (
 	"bytes"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/pkg/errors"
-	"github.com/spatialcurrent/go-dfl/dfl"
-	"github.com/spatialcurrent/go-reader-writer/grw"
-	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"github.com/spatialcurrent/go-try-get/gtg"
-	"github.com/spatialcurrent/railgun/railgun/cache"
-	"github.com/spatialcurrent/railgun/railgun/core"
-	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
-	rlogger "github.com/spatialcurrent/railgun/railgun/logger"
-	"github.com/spatialcurrent/railgun/railgun/parser"
-	"github.com/spatialcurrent/railgun/railgun/util"
-	"github.com/spatialcurrent/viper"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
+)
+
+import (
+  "github.com/spatialcurrent/viper"
+  "github.com/aws/aws-sdk-go/service/s3"
+	"github.com/pkg/errors"
+)
+
+import (
+	"github.com/spatialcurrent/go-dfl/dfl"
+	"github.com/spatialcurrent/go-reader-writer/grw"
+	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/go-try-get/gtg"
+  "github.com/spatialcurrent/go-sync-logger/gsl"
+)
+
+import (
+	"github.com/spatialcurrent/railgun/railgun/cache"
+	"github.com/spatialcurrent/railgun/railgun/core"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/parser"
+	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
 type RailgunCatalog struct {
@@ -529,7 +538,7 @@ func (c *RailgunCatalog) ListWorkflows() []*core.Workflow {
 	return c.Catalog.List(core.WorkflowType).([]*core.Workflow)
 }
 
-func (c *RailgunCatalog) LoadFromUri(uri string, logger *rlogger.Logger, s3_client *s3.S3, messages chan interface{}) error {
+func (c *RailgunCatalog) LoadFromUri(uri string, logger *gsl.Logger, s3_client *s3.S3, messages chan interface{}) error {
 
 	//logger.Info(fmt.Sprintf("* loading catalog from %s", uri))
 

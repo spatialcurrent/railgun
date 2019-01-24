@@ -44,10 +44,13 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+  "github.com/spatialcurrent/go-sync-logger/gsl"
+)
+
+import (
 	//rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/athenaiterator"
 	"github.com/spatialcurrent/railgun/railgun/config"
-	rlogger "github.com/spatialcurrent/railgun/railgun/logger"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -433,7 +436,7 @@ func formatObject(object interface{}, format string, header []string) (string, e
 	return str, nil
 }
 
-func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputFormat string, athenaClient *athena.Athena, logger *rlogger.Logger, verbose bool) (*athenaiterator.AthenaIterator, error) {
+func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputFormat string, athenaClient *athena.Athena, logger *gsl.Logger, verbose bool) (*athenaiterator.AthenaIterator, error) {
 
 	if !strings.HasPrefix(tempUri, "s3://") {
 		return nil, errors.New("temporary uri must be an S3 object")
@@ -603,9 +606,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	//logger := rlogger.New(infoWriter, processConfig.InfoFormat, errorWriter, processConfig.ErrorFormat)
-
-	logger := rlogger.New(
+	logger := gsl.NewLogger(
 		map[string]int{"info": 0, "error": 1},
 		[]grw.ByteWriteCloser{infoWriter, errorWriter},
 		[]string{processConfig.InfoFormat, processConfig.ErrorFormat},

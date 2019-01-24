@@ -28,12 +28,18 @@ import (
 import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
+)
+
+import (
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/go-sync-logger/gsl"
+)
+
+import (
 	"github.com/spatialcurrent/railgun/railgun"
 	"github.com/spatialcurrent/railgun/railgun/catalog"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
-	rlogger "github.com/spatialcurrent/railgun/railgun/logger"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/router"
 	"github.com/spatialcurrent/railgun/railgun/util"
@@ -41,7 +47,7 @@ import (
 
 var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[]}")
 
-func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, logger *rlogger.Logger, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, errorsChannel chan interface{}, requests chan request.Request, messages chan interface{}, version string, gitBranch string, gitCommit string, verbose bool) (*router.RailgunRouter, error) {
+func NewRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, logger *gsl.Logger, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, errorsChannel chan interface{}, requests chan request.Request, messages chan interface{}, version string, gitBranch string, gitCommit string, verbose bool) (*router.RailgunRouter, error) {
 
 	go func(requests chan request.Request, logRequestsTile bool, logRequestsCache bool) {
 		for r := range requests {
@@ -243,7 +249,7 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	logger := rlogger.New(
+	logger := gsl.NewLogger(
 		map[string]int{"info": 0, "error": 1},
 		[]grw.ByteWriteCloser{infoWriter, errorWriter},
 		[]string{infoFormat, errorFormat},
