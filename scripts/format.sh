@@ -4,4 +4,3 @@ cd $DIR/..
 echo "******************"
 echo "Formatting"
 go fmt $(go list ./... )
-exit 1

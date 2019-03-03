@@ -2,7 +2,7 @@ version: 2.1
 executors:
   base:
     docker:
-      - image: circleci/golang:1.11
+      - image: circleci/golang:1.12
     working_directory: /go/src/github.com/spatialcurrent/railgun
 jobs:
   pre_deps_golang:
@@ -32,6 +32,25 @@ jobs:
       - run:
           name: Test
           command: bash scripts/test.sh
+  validate:
+    executor: base
+    steps:
+      - run: sudo chown -R circleci /go/src
+      - restore_cache:
+          keys:
+            - v1-go-src-{{ .Branch }}-{{ .Revision }}
+      - run:
+          name: Install Dig
+          command: sudo apt update && sudo apt install dnsutils
+      - run:
+          name: "Update ~/.ssh/known_hosts"
+          command: |
+            mkdir ~/.ssh/
+            touch ~/.ssh/known_hosts
+            for ip in $(dig @8.8.8.8 github.com +short); do ssh-keyscan github.com,$ip; ssh-keyscan $ip; done 2>/dev/null >> ~/.ssh/known_hosts
+      - run: go get github.com/spatialcurrent/go-header/...
+      - run: go install github.com/spatialcurrent/go-header/cmd/goheader
+      - run: goheader fix --fix-year 2019 --exit-code-on-changes 1 --verbose
   build_cli:
     executor: base
     steps:
@@ -76,14 +95,17 @@ jobs:
       - run: docker build -t railgun:git-${CIRCLE_SHA1} .
       - run: sudo apt-get install python-dev python-pip
       - run: pip install awscli --upgrade --user
-      - run: bash -c "$(python -m awscli ecr get-login --no-include-email --region ${AWS_DEFAULT_REGION})" 
-      - run: docker tag railgun:git-${CIRCLE_SHA1} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/railgun:git-${CIRCLE_SHA1} 
-      - run: docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/railgun:git-${CIRCLE_SHA1} 
+      - run: bash -c "$(python -m awscli ecr get-login --no-include-email --region ${AWS_DEFAULT_REGION})"
+      - run: docker tag railgun:git-${CIRCLE_SHA1} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/railgun:git-${CIRCLE_SHA1}
+      - run: docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/railgun:git-${CIRCLE_SHA1}
 workflows:
   main:
     jobs:
       - pre_deps_golang
       - test:
+          requires:
+            - pre_deps_golang
+      - validate:
           requires:
             - pre_deps_golang
       - build_cli:
@@ -95,4 +117,3 @@ workflows:
       - build_container:
           requires:
             - build_cli
-

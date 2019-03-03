@@ -1,6 +1,6 @@
 // =================================================================
 //
-// Copyright (C) 2018 Spatial Current, Inc. - All Rights Reserved
+// Copyright (C) 2019 Spatial Current, Inc. - All Rights Reserved
 // Released as open source under the MIT License.  See LICENSE file.
 //
 // =================================================================
@@ -157,7 +157,7 @@ func buildOptions(inputLine []byte, inputFormat string, inputHeader []string, in
 	return options, errors.New("invalid input format for handleInput " + inputFormat)
 }
 
-func handleInput(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, outputFormat string, errorsChannel chan error, verbose bool) error {
+func handleInput(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, outputFormat string, errorsChannel chan interface{}, verbose bool) error {
 
 	go func() {
 
@@ -197,7 +197,7 @@ func handleInput(inputLines chan []byte, input *config.Input, node dfl.Node, var
 	return nil
 }
 
-func handleOutput(output *config.Output, outputVars map[string]interface{}, objects chan interface{}, errorsChannel chan error, messages chan interface{}, fileDescriptorLimit int, wg *sync.WaitGroup, s3_client *s3.S3, verbose bool) error {
+func handleOutput(output *config.Output, outputVars map[string]interface{}, objects chan interface{}, errorsChannel chan interface{}, messages chan interface{}, fileDescriptorLimit int, wg *sync.WaitGroup, s3_client *s3.S3, verbose bool) error {
 
 	if output.Uri == "stdout" {
 		go func() {
@@ -715,7 +715,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 			var wgObjects sync.WaitGroup
 			var wgMessages sync.WaitGroup
-			fatals := make(chan error, 1000)
+			fatals := make(chan interface{}, 1000)
 			outputObjects := make(chan interface{}, 1000)
 			//messages := make(chan interface, 1000)
 
@@ -767,7 +767,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 		var wgObjects sync.WaitGroup
 		var wgMessages sync.WaitGroup
-		errorsChannel := make(chan error, 1000)
+		errorsChannel := make(chan interface{}, 1000)
 		messages := make(chan interface{}, 1000)
 		outputObjects := make(chan interface{}, 1000)
 
@@ -971,7 +971,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 			processConfig.Output.Header,
 			processConfig.Output.Limit)
 		if err != nil {
-			logger.Fatal(errors.Wrap(err, "error converting input"))
+			logger.Fatal(errors.Wrap(err, "error converting output"))
 		}
 
 		outputString = str
@@ -1020,7 +1020,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 			str, err := processConfig.OutputOptions().SerializeString(gss.StringifyMapKeys(outputObject))
 			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error converting input"))
+				logger.Fatal(errors.Wrap(err, "error converting output"))
 			}
 
 			outputString = str
