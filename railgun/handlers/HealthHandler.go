@@ -66,7 +66,13 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"gitBranch": h.GitBranch,
 			"gitCommit": h.GitCommit,
 		}
-		err := h.RespondWithObject(w, http.StatusOK, obj, format, "")
+		err := h.RespondWithObject(&Response{
+			Writer:     w,
+			StatusCode: http.StatusOK,
+			Format:     format,
+			Filename:   "",
+			Object:     obj,
+		})
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)

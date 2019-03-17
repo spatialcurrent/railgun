@@ -191,10 +191,10 @@ func (h *BaseHandler) ParseBody(inputBytes []byte, format string) (interface{}, 
 }
 
 /* #nosec */
-func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, obj interface{}, format string, filename string) error {
+func (h *BaseHandler) RespondWithObject(resp *Response) error {
 
-	if format == "html" {
-		code, err := json.MarshalIndent(obj, "", "    ")
+	if resp.Format == "html" {
+		code, err := json.MarshalIndent(resp.Object, "", "    ")
 		if err != nil {
 			return errors.Wrap(err, "error serializing response body")
 		}
@@ -245,19 +245,19 @@ func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, o
       </body>
     </html>
    `
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(statusCode)
-		w.Write([]byte(html))
+		resp.Writer.Header().Set("Content-Type", "text/html")
+		resp.Writer.WriteHeader(resp.StatusCode)
+		resp.Writer.Write([]byte(html))
 		return nil
 	}
 
-	b, err := gss.SerializeBytes(obj, format, []string{}, gss.NoLimit)
+	b, err := gss.SerializeBytes(resp.Object, resp.Format, []string{}, gss.NoLimit)
 	if err != nil {
 		return errors.Wrap(err, "error serializing response body")
 	}
 
 	contentType := "text/plain; charset=utf-8"
-	switch format {
+	switch resp.Format {
 	case "bson":
 		contentType = "application/ubjson"
 	case "json":
@@ -268,15 +268,15 @@ func (h *BaseHandler) RespondWithObject(w http.ResponseWriter, statusCode int, o
 		contentType = "text/yaml"
 	}
 
-	if len(filename) > 0 {
-		w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+	if len(resp.Filename) > 0 {
+		resp.Writer.Header().Set("Content-Disposition", "attachment; filename="+resp.Filename)
 	}
 
-	w.Header().Set("Content-Type", contentType)
-	if statusCode != http.StatusOK {
-		w.WriteHeader(statusCode)
+	resp.Writer.Header().Set("Content-Type", contentType)
+	if resp.StatusCode != http.StatusOK {
+		resp.Writer.WriteHeader(resp.StatusCode)
 	}
-	w.Write(b)
+	resp.Writer.Write(b)
 	return nil
 }
 

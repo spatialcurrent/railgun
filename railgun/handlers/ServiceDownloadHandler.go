@@ -58,11 +58,11 @@ func (h *ServiceDownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	switch r.Method {
 	case "GET":
 		once := &sync.Once{}
-		h.Catalog.ReadLock()
-		defer once.Do(func() { h.Catalog.ReadUnlock() })
+		h.Catalog.RLock()
+		defer once.Do(func() { h.Catalog.RUnlock() })
 		h.SendDebug("read locked for " + r.URL.String())
 		filename, obj, err := h.Get(w, r.WithContext(ctx), format, vars)
-		once.Do(func() { h.Catalog.ReadUnlock() })
+		once.Do(func() { h.Catalog.RUnlock() })
 		h.SendDebug("read unlocked for " + r.URL.String())
 		if err != nil {
 			h.SendError(err)
@@ -71,7 +71,13 @@ func (h *ServiceDownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, format, filename)
+			err = h.RespondWithObject(&Response{
+				Writer:     w,
+				StatusCode: http.StatusOK,
+				Format:     format,
+				Filename:   filename,
+				Object:     obj,
+			})
 			if err != nil {
 				h.SendError(err)
 				err = h.RespondWithError(w, err, format)

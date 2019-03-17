@@ -10,7 +10,10 @@ package catalog
 import (
 	"context"
 	"reflect"
-	"sync"
+)
+
+import (
+	"github.com/spatialcurrent/go-sync-catalog/gsc"
 )
 
 import (
@@ -19,132 +22,39 @@ import (
 )
 
 type Catalog struct {
-	mutex   *sync.RWMutex
-	objects map[string]interface{}
-	indices map[string]map[string]int
+	*gsc.Catalog
 }
 
 func NewCatalog() *Catalog {
-
-	catalog := &Catalog{
-		mutex:   &sync.RWMutex{},
-		objects: map[string]interface{}{},
-		indices: map[string]map[string]int{},
-	}
-
-	return catalog
-}
-
-func (c *Catalog) ReadLock() {
-	c.mutex.RLock()
-}
-
-func (c *Catalog) WriteLock() {
-	c.mutex.Lock()
-}
-
-func (c *Catalog) ReadUnlock() {
-	c.mutex.RUnlock()
-}
-
-func (c *Catalog) WriteUnlock() {
-	c.mutex.Unlock()
+	return &Catalog{Catalog: gsc.NewCatalog()}
 }
 
 func (c *Catalog) Get(name string, t reflect.Type) (core.Base, bool) {
-	typeName := ""
-	if t.Kind() == reflect.Ptr {
-		typeName = t.Elem().Name()
-	} else {
-		typeName = t.Name()
-	}
-	if index, ok := c.indices[typeName]; ok {
-		if position, ok := index[name]; ok {
-			if objects, ok := c.objects[typeName]; ok {
-				obj := reflect.ValueOf(objects).Index(position).Interface()
-				if base, ok := obj.(core.Base); ok {
-					return base, true
-				}
-			}
+	if obj, exists := c.Catalog.Get(name, t); exists {
+		if base, ok := obj.(core.Base); ok {
+			return base, true
 		}
 	}
 	return nil, false
 }
 
 func (c *Catalog) Add(obj interface{}) error {
-	objectType := reflect.TypeOf(obj)
-	typeName := objectType.Elem().Name()
-
 	if n, ok := obj.(core.Named); ok {
-
-		if _, ok := c.indices[typeName]; !ok {
-			c.indices[typeName] = map[string]int{}
-		} else {
-			if _, ok := c.indices[typeName][n.GetName()]; ok {
-				return &rerrors.ErrAlreadyExists{Name: typeName, Value: n.GetName()}
-			}
-		}
-
-		if _, ok := c.objects[typeName]; !ok {
-			c.objects[typeName] = reflect.MakeSlice(reflect.SliceOf(objectType), 0, 0).Interface()
-		}
-
-		c.objects[typeName] = reflect.Append(reflect.ValueOf(c.objects[typeName]), reflect.ValueOf(obj)).Interface()
-		c.indices[typeName][n.GetName()] = reflect.ValueOf(c.objects[typeName]).Len() - 1
-		return nil
+		return c.Catalog.Add(n.GetName(), obj)
 	}
-
-	return &rerrors.ErrMissingMethod{Type: typeName, Method: "GetName() string"}
+	return &rerrors.ErrMissingMethod{Type: reflect.TypeOf(obj).Elem().Name(), Method: "GetName() string"}
 }
 
 func (c *Catalog) Update(obj interface{}) error {
-	objectType := reflect.TypeOf(obj)
-	typeName := objectType.Elem().Name()
 	if n, ok := obj.(core.Named); ok {
-		if index, ok := c.indices[typeName]; ok {
-			if position, ok := index[n.GetName()]; ok {
-				if objects, ok := c.objects[typeName]; ok {
-					reflect.ValueOf(objects).Index(position).Set(reflect.ValueOf(obj))
-					return nil
-				}
-			}
-		}
-		return &rerrors.ErrMissingObject{Type: typeName, Name: n.GetName()}
+		return c.Catalog.Update(n.GetName(), obj)
 	}
-	return &rerrors.ErrMissingObject{Type: typeName, Name: "unknown"}
-}
-
-func (c *Catalog) Delete(name string, t reflect.Type) error {
-	typeName := t.Name()
-	if index, ok := c.indices[typeName]; ok {
-		if position, ok := index[name]; ok {
-			if list, ok := c.objects[typeName]; ok {
-				listValue := reflect.ValueOf(list)
-				c.objects[typeName] = reflect.AppendSlice(listValue.Slice(0, position), listValue.Slice(position+1, listValue.Len())).Interface()
-			}
-			delete(index, name)
-			return nil
-		}
-	}
-	return &rerrors.ErrMissingObject{Type: typeName, Name: name}
-}
-
-func (c *Catalog) List(t reflect.Type) interface{} {
-	if t.Kind() == reflect.Ptr {
-		if list, ok := c.objects[t.Elem().Name()]; ok {
-			return list
-		}
-	} else {
-		if list, ok := c.objects[t.Name()]; ok {
-			return list
-		}
-	}
-	return reflect.MakeSlice(reflect.SliceOf(t), 0, 0).Interface()
+	return &rerrors.ErrMissingObject{Type: reflect.TypeOf(obj).Elem().Name(), Name: "unknown"}
 }
 
 func (c *Catalog) Dump(ctx context.Context) map[string]interface{} {
 	dump := map[string]interface{}{}
-	for typeName, input := range c.objects {
+	for typeName, input := range c.Objects() {
 		output := make([]map[string]interface{}, 0)
 		objects := reflect.ValueOf(input)
 		numberOfObjects := objects.Len()
@@ -160,8 +70,8 @@ func (c *Catalog) Dump(ctx context.Context) map[string]interface{} {
 }
 
 func (c *Catalog) SafeDump(ctx context.Context) map[string]interface{} {
-	c.ReadLock()
+	c.Lock() // lock the mutex for writing
 	dump := c.Dump(ctx)
-	c.ReadUnlock()
+	c.Unlock() // Unlock the mutex for writing
 	return dump
 }

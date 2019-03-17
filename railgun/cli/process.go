@@ -44,7 +44,7 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
-  "github.com/spatialcurrent/go-sync-logger/gsl"
+	"github.com/spatialcurrent/go-sync-logger/gsl"
 )
 
 import (

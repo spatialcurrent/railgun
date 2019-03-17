@@ -14,21 +14,20 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 )
 
 import (
-  "github.com/spatialcurrent/viper"
-  "github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
+	"github.com/spatialcurrent/viper"
 )
 
 import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/go-sync-logger/gsl"
 	"github.com/spatialcurrent/go-try-get/gtg"
-  "github.com/spatialcurrent/go-sync-logger/gsl"
 )
 
 import (
@@ -44,16 +43,7 @@ type RailgunCatalog struct {
 }
 
 func NewRailgunCatalog() *RailgunCatalog {
-
-	catalog := &RailgunCatalog{
-		Catalog: &Catalog{
-			mutex:   &sync.RWMutex{},
-			objects: map[string]interface{}{},
-			indices: map[string]map[string]int{},
-		},
-	}
-
-	return catalog
+	return &RailgunCatalog{Catalog: NewCatalog()}
 }
 
 func (c *RailgunCatalog) ParseWorkspace(obj interface{}) (*core.Workspace, error) {

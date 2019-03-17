@@ -8,13 +8,20 @@
 package handlers
 
 import (
-	"github.com/pkg/errors"
-	"github.com/spatialcurrent/go-try-get/gtg"
-	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
-	"github.com/spatialcurrent/railgun/railgun/util"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"reflect"
+)
+
+import (
+	"github.com/pkg/errors"
+)
+
+import (
+	"github.com/spatialcurrent/go-try-get/gtg"
+	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
 type AuthenticateHandler struct {
@@ -36,7 +43,13 @@ func (h *AuthenticateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, statusCode, obj, "", format)
+			err = h.RespondWithObject(&Response{
+				Writer:     w,
+				StatusCode: statusCode,
+				Format:     format,
+				Filename:   "",
+				Object:     obj,
+			})
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)

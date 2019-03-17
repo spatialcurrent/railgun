@@ -6,7 +6,7 @@
 #DATASTORE_URI="~/Downloads/dc_amenities.geojsonl"
 #DATASTORE_URI='($z == null) ? "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-*.geojsonl.gz" : ( ($z < 8) ? null : "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-" + int64(mul($x, pow(2, sub(8, $z)))) + "-" + int64(mul($y, pow(2, sub(8, $z)))) + ".geojsonl.gz")'
 
-export SERVER=https://railgun.spatialcurrent.io
+#export SERVER=https://railgun.spatialcurrent.io
 
 
 #if [[ -z "${RAILGUN_BUCKET}" ]]; then
@@ -42,23 +42,10 @@ echo "Using JWT Token:"
 echo $JWT_TOKEN
 echo "****************************"
 
-go run cmd/railgun/main.go client processes update \
---name water_points \
---title Water Points \
---description 'Filter a list of GeoJSON features for water points.' \
---tags '[geojson]' \
---expression 'filter(@, "((@properties?.amenity != null) and (@properties.amenity iin [waterpoint, water_point, "water point", drinkingwater, drinking_water, "drinking water", drinking])) or ((@properties?.natural != null) and (@properties.natural iin [spring])) or ((@properties?.emergency != null) and (@properties.emergency iin [watertank, water_tank, "water tank"]))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
-
-go run cmd/railgun/main.go client services update \
---name water_points_geojson \
---title 'Water Points' \
---description 'Find locations of water points.' \
---tags '[water, geojson]' \
---datastore amenities \
---process water_points \
---defaults '{limit: -1}'
-
-exit 0
+go run cmd/railgun/main.go client workspaces add \
+--name osm \
+--title osm \
+--description 'Workspace for OpenStreetMap data'
 
 go run cmd/railgun/main.go client datastores add \
 --workspace osm \
@@ -285,6 +272,13 @@ go run cmd/railgun/main.go client processes add \
 --description 'Filter a list of GeoJSON features for schools.' \
 --tags '[geojson]' \
 --expression 'filter(@, "(@properties?.amenity != null) and (@properties.amenity in [school])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+
+go run cmd/railgun/main.go client processes add \
+--name water_points \
+--title Water Points \
+--description 'Filter a list of GeoJSON features for water points.' \
+--tags '[geojson]' \
+--expression 'filter(@, "((@properties?.amenity != null) and (@properties.amenity iin [waterpoint, water_point, "water point", drinkingwater, drinking_water, "drinking water", drinking])) or ((@properties?.natural != null) and (@properties.natural iin [spring])) or ((@properties?.emergency != null) and (@properties.emergency iin [watertank, water_tank, "water tank"]))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
 go run cmd/railgun/main.go client services add \
 --name amenities_extent \
@@ -570,4 +564,13 @@ go run cmd/railgun/main.go client services add \
 --tags '[education, geojson]' \
 --datastore amenities \
 --process schools \
+--defaults '{limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name water_points_geojson \
+--title 'Water Points' \
+--description 'Find locations of water points.' \
+--tags '[water, geojson]' \
+--datastore amenities \
+--process water_points \
 --defaults '{limit: -1}'

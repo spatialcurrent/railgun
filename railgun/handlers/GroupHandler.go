@@ -40,10 +40,10 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		once := &sync.Once{}
-		h.Catalog.ReadLock()
-		defer once.Do(func() { h.Catalog.ReadUnlock() })
+		h.Catalog.RLock()
+		defer once.Do(func() { h.Catalog.RUnlock() })
 		obj, err := h.Get(w, r, format)
-		once.Do(func() { h.Catalog.ReadUnlock() })
+		once.Do(func() { h.Catalog.RUnlock() })
 		if err != nil {
 			h.Messages <- err
 			err = h.RespondWithError(w, err, format)
@@ -51,7 +51,13 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
+			err = h.RespondWithObject(&Response{
+				Writer:     w,
+				StatusCode: http.StatusOK,
+				Format:     format,
+				Filename:   "",
+				Object:     obj,
+			})
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)
@@ -62,17 +68,23 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "POST":
 		once := &sync.Once{}
-		h.Catalog.WriteLock()
-		defer once.Do(func() { h.Catalog.WriteUnlock() })
+		h.Catalog.Lock()
+		defer once.Do(func() { h.Catalog.Unlock() })
 		obj, err := h.Post(w, r, format)
-		once.Do(func() { h.Catalog.WriteUnlock() })
+		once.Do(func() { h.Catalog.Unlock() })
 		if err != nil {
 			err = h.RespondWithError(w, err, format)
 			if err != nil {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(w, http.StatusOK, obj, format, "")
+			err = h.RespondWithObject(&Response{
+				Writer:     w,
+				StatusCode: http.StatusOK,
+				Format:     format,
+				Filename:   "",
+				Object:     obj,
+			})
 			if err != nil {
 				h.Messages <- err
 				err = h.RespondWithError(w, err, format)

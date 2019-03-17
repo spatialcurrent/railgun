@@ -33,24 +33,26 @@ func convertFunction(cmd *cobra.Command, args []string) {
 	v.AutomaticEnv() // set environment variables to overwrite config
 	util.MergeConfigs(v, v.GetStringArray("config-uri"))
 
-	verbose := v.GetBool("verbose")
-	inputFormat := v.GetString("input-format")
-	inputHeader := v.GetStringArray("input-header")
-	inputSkipLines := v.GetInt("input-skip-lines")
-	inputLimit := v.GetInt("input-limit")
-	inputComment := v.GetString("input-comment")
-	inputLazyQuotes := v.GetBool("input-lazy-quotes")
-	outputFormat := v.GetString("output-format")
-	outputHeader := v.GetStringArray("output-header")
-	outputLimit := v.GetInt("output-limit")
-
 	inputBytes, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
 		fmt.Println(errors.Wrap(err, "error reading from stdin"))
 		os.Exit(1)
 	}
 
-	outputString, err := gss.Convert(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, outputFormat, outputHeader, outputLimit, false, verbose)
+	outputString, err := gss.Convert(&gss.ConvertInput{
+		InputBytes:      inputBytes,
+		InputFormat:     v.GetString("input-format"),
+		InputHeader:     v.GetStringSlice("input-header"),
+		InputComment:    v.GetString("input-comment"),
+		InputLazyQuotes: v.GetBool("input-lazy-quotes"),
+		InputSkipLines:  v.GetInt("input-skip-lines"),
+		InputLimit:      v.GetInt("input-limit"),
+		OutputFormat:    v.GetString("output-format"),
+		OutputHeader:    v.GetStringSlice("output-header"),
+		OutputLimit:     v.GetInt("output-limit"),
+		Async:           v.GetBool("async"),
+		Verbose:         v.GetBool("verbose"),
+	})
 	if err != nil {
 		fmt.Println(errors.Wrap(err, "error converting"))
 		os.Exit(1)
