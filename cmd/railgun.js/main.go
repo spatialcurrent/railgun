@@ -71,6 +71,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 	inputLimit := gss.NoLimit
 
 	outputFormat := ""
+	outputPretty := false
 	outputHeader := gss.NoHeader
 	outputLimit := gss.NoLimit
 
@@ -129,6 +130,13 @@ func Process(in interface{}, options *js.Object) interface{} {
 		switch v.(type) {
 		case string:
 			outputFormat = v.(string)
+		}
+	}
+
+	if v, ok := m["outputPretty"]; ok {
+		switch v.(type) {
+		case bool:
+			outputPretty = v.(bool)
 		}
 	}
 
@@ -224,7 +232,13 @@ func Process(in interface{}, options *js.Object) interface{} {
 	output = gss.StringifyMapKeys(output)
 
 	if len(outputFormat) > 0 {
-		output_string, err := gss.SerializeString(output, outputFormat, outputHeader, outputLimit)
+		output_string, err := gss.SerializeString(&gss.SerializeInput{
+			Object: output,
+			Format: outputFormat,
+			Header: outputHeader,
+			Limit:  outputLimit,
+			Pretty: outputPretty,
+		})
 		if err != nil {
 			console.Error(errors.Wrap(err, "Error converting to output format "+outputFormat).Error())
 			return ""

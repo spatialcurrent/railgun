@@ -42,7 +42,7 @@ func (c *Cache) Get(uri string, format string, compression string, bufferSize in
 		return false, nil, errors.Wrap(err, "error opening resource at uri "+uri)
 	}
 
-	inputByte, err := inputReader.ReadAllAndClose()
+	inputBytes, err := inputReader.ReadAllAndClose()
 	if err != nil {
 		return false, nil, errors.New("error reading from resource at uri " + uri)
 	}
@@ -58,12 +58,23 @@ func (c *Cache) Get(uri string, format string, compression string, bufferSize in
 			return false, nil, errors.Wrap(err, "error decoding input")
 		}*/
 
-	inputType, err := gss.GetType(inputByte, format)
+	inputType, err := gss.GetType(inputBytes, format)
 	if err != nil {
 		return false, nil, errors.Wrap(err, "error getting type for input")
 	}
 
-	obj, err := gss.DeserializeBytes(inputByte, format, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, false, verbose)
+	obj, err := gss.DeserializeBytes(&gss.DeserializeInput{
+		Bytes:      inputBytes,
+		Format:     format,
+		Header:     gss.NoHeader,
+		Comment:    gss.NoComment,
+		LazyQuotes: false,
+		SkipLines:  gss.NoSkip,
+		Limit:      gss.NoLimit,
+		Type:       inputType,
+		Async:      false,
+		Verbose:    verbose,
+	})
 	if err != nil {
 		return false, nil, errors.Wrap(err, "error deserializing input using format "+format)
 	}

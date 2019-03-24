@@ -157,7 +157,7 @@ func buildOptions(inputLine []byte, inputFormat string, inputHeader []string, in
 	return options, errors.New("invalid input format for handleInput " + inputFormat)
 }
 
-func handleInput(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, outputFormat string, errorsChannel chan interface{}, verbose bool) error {
+func handleInput(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, errorsChannel chan interface{}, verbose bool) error {
 
 	go func() {
 
@@ -423,13 +423,25 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 
 func formatObject(object interface{}, format string, header []string) (string, error) {
 	if format == "jsonl" {
-		str, err := gss.SerializeString(object, "json", header, gss.NoLimit)
+		str, err := gss.SerializeString(&gss.SerializeInput{
+			Object: object,
+			Format: "json",
+			Header: header,
+			Limit:  gss.NoLimit,
+			Pretty: false,
+		})
 		if err != nil {
 			return "", errors.Wrap(err, "error serializing object")
 		}
 		return str, nil
 	}
-	str, err := gss.SerializeString(object, format, header, gss.NoLimit)
+	str, err := gss.SerializeString(&gss.SerializeInput{
+		Object: object,
+		Format: format,
+		Header: header,
+		Limit:  gss.NoLimit,
+		Pretty: false,
+	})
 	if err != nil {
 		return "", errors.Wrap(err, "error serializing object")
 	}
@@ -529,12 +541,19 @@ func processFunction(cmd *cobra.Command, args []string) {
 	util.MergeConfigs(v, v.GetStringArray("config-uri"))
 
 	verbose := v.GetBool("verbose")
+	printTiming := v.GetBool("time")
 
 	if verbose {
 		fmt.Println("=================================================")
 		fmt.Println("Viper:")
 		fmt.Println("-------------------------------------------------")
-		str, err := gss.SerializeString(v.AllSettings(), "properties", []string{}, gss.NoLimit)
+		str, err := gss.SerializeString(&gss.SerializeInput{
+			Object: v.AllSettings(),
+			Format: "properties",
+			Header: gss.NoHeader,
+			Limit:  gss.NoLimit,
+			Pretty: false,
+		})
 		if err != nil {
 			fmt.Println("error getting all settings")
 			os.Exit(1)
@@ -565,7 +584,13 @@ func processFunction(cmd *cobra.Command, args []string) {
 		fmt.Println("=================================================")
 		fmt.Println("Configuration:")
 		fmt.Println("-------------------------------------------------")
-		str, err := gss.SerializeString(processConfig.Map(), "yaml", gss.NoHeader, gss.NoLimit)
+		str, err := gss.SerializeString(&gss.SerializeInput{
+			Object: processConfig.Map(),
+			Format: "yaml",
+			Header: gss.NoHeader,
+			Limit:  gss.NoLimit,
+			Pretty: false,
+		})
 		if err != nil {
 			fmt.Println("error getting all settings")
 			os.Exit(1)
@@ -624,6 +649,14 @@ func processFunction(cmd *cobra.Command, args []string) {
 		}(errorsChannel)
 	} else {
 		logger.ListenError(errorsChannel, nil)
+	}
+
+	start := time.Now()
+	if printTiming {
+		messages <- map[string]interface{}{
+			"msg": "started",
+			"ts":  start.Format(time.RFC3339),
+		}
 	}
 
 	processConfig.Input.Init()
@@ -750,8 +783,16 @@ func processFunction(cmd *cobra.Command, args []string) {
 			close(outputObjects)
 			wgObjects.Wait()
 			wgMessages.Wait()
+
+			if printTiming {
+				messages <- map[string]interface{}{
+					"msg": "ended",
+				}
+			}
+
 			logger.Close()
-			return
+
+			return // exits function
 		}
 
 		//dflNode, err := util.ParseDfl(dflUri, dflExpression)
@@ -847,8 +888,16 @@ func processFunction(cmd *cobra.Command, args []string) {
 			wgObjects.Wait()
 			messages <- "waiting for wgMessages"
 			wgMessages.Wait()
+
+			if printTiming {
+				messages <- map[string]interface{}{
+					"msg": "ended",
+				}
+			}
+
 			logger.Close()
-			return
+
+			return // exits function
 
 		}
 
@@ -884,7 +933,6 @@ func processFunction(cmd *cobra.Command, args []string) {
 			dflNode,
 			dflVars,
 			outputObjects,
-			processConfig.Output.Format,
 			errorsChannel,
 			verbose)
 
@@ -922,8 +970,16 @@ func processFunction(cmd *cobra.Command, args []string) {
 		close(inputLines)
 		wgObjects.Wait()
 		wgMessages.Wait()
+
+		if printTiming {
+			messages <- map[string]interface{}{
+				"msg": "ended",
+			}
+		}
+
 		logger.Close()
-		return
+
+		return // exits function
 
 	}
 
@@ -965,11 +1021,13 @@ func processFunction(cmd *cobra.Command, args []string) {
 			return // just exit if no output-format is given
 		}
 
-		str, err := gss.SerializeString(
-			outputObjects,
-			processConfig.Output.Format,
-			processConfig.Output.Header,
-			processConfig.Output.Limit)
+		str, err := gss.SerializeString(&gss.SerializeInput{
+			Object: outputObjects,
+			Format: processConfig.Output.Format,
+			Header: processConfig.Output.Header,
+			Limit:  processConfig.Output.Limit,
+			Pretty: processConfig.Output.Pretty,
+		})
 		if err != nil {
 			logger.Fatal(errors.Wrap(err, "error converting output"))
 		}
@@ -1034,6 +1092,16 @@ func processFunction(cmd *cobra.Command, args []string) {
 	if err != nil {
 		logger.Fatal(errors.Wrap(err, "error processing output"))
 	}
+
+	if printTiming {
+		end := time.Now()
+		logger.Info(map[string]interface{}{
+			"msg":      "ended",
+			"ts":       end.Format(time.RFC3339),
+			"duration": end.Sub(start).String(),
+		})
+	}
+
 	logger.Close()
 
 }
@@ -1050,7 +1118,6 @@ func init() {
 	rootCmd.AddCommand(processCmd)
 
 	processCmd.Flags().BoolP("dry-run", "", false, "parse and compile expression, but do not evaluate against context")
-	processCmd.Flags().BoolP("pretty", "p", false, "print pretty output")
 	processCmd.Flags().BoolP("stream", "s", false, "stream process (context == row rather than encompassing array)")
 
 	// Input Flags
@@ -1072,11 +1139,13 @@ func init() {
 	processCmd.Flags().StringP("output-uri", "o", "stdout", "the output uri (a dfl expression itself)")
 	processCmd.Flags().StringP("output-compression", "", "", "the output compression: "+strings.Join(GO_RAILGUN_COMPRESSION_ALGORITHMS, ", "))
 	processCmd.Flags().StringP("output-format", "", "", "the output format: "+strings.Join(gss.Formats, ", "))
+	processCmd.Flags().BoolP("output-pretty", "p", false, "output pretty format")
 	processCmd.Flags().StringSliceP("output-header", "", []string{}, "the output header")
 	processCmd.Flags().StringP("output-passphrase", "", "", "output passphrase for AES-256 encryption")
 	processCmd.Flags().StringP("output-salt", "", "", "output salt for AES-256 encryption")
 	processCmd.Flags().IntP("output-limit", "", gss.NoLimit, "maximum number of objects to send to output")
 	processCmd.Flags().BoolP("output-append", "", false, "append to output files")
+	processCmd.Flags().BoolP("output-overwrite", "", false, "overwrite output if it already exists")
 	processCmd.Flags().Bool("output-buffer-memory", false, "buffer output in memory")
 	processCmd.Flags().Bool("output-mkdirs", false, "make directories if missing for output files")
 

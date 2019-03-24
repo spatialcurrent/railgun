@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 )
 
@@ -14,18 +15,20 @@ import (
 )
 
 type Output struct {
-	Uri          string   `viper:"output-uri"`
-	Format       string   `viper:"output-format"`
-	Header       []string `viper:"output-header"`
-	Comment      string   `viper:"output-comment"`
-	LazyQuotes   bool     `viper:"output-lazy-quotes"`
-	Append       bool     `viper:"output-append"`
-	BufferMemory bool     `viper:"output-buffer-memory"`
-	Compression  string   `viper:"output-compression"`
-	Passphrase   string   `viper:"output-passphrase"`
-	Salt         string   `viper:"output-salt"`
-	Limit        int      `viper:"output-limit"`
-	Mkdirs       bool     `viper:"output-mkdirs"`
+	Uri          string   `viper:"output-uri" map:"Uri"`
+	Format       string   `viper:"output-format" map:"Format"`
+	Header       []string `viper:"output-header" map:"Header"`
+	Comment      string   `viper:"output-comment" map:"Comment"`
+	LazyQuotes   bool     `viper:"output-lazy-quotes" map:"LazyQuotes"`
+	Append       bool     `viper:"output-append" map:"Append"`
+	Overwrite    bool     `viper:"output-overwrite" map:"Overwrite"`
+	BufferMemory bool     `viper:"output-buffer-memory" map:"BufferMemory"`
+	Compression  string   `viper:"output-compression" map:"Compression"`
+	Passphrase   string   `viper:"output-passphrase" map:"Passphrase"`
+	Salt         string   `viper:"output-salt" map:"Salt"`
+	Limit        int      `viper:"output-limit" map:"Limit"`
+	Pretty       bool     `viper:"output-pretty" map:"Pretty"`
+	Mkdirs       bool     `viper:"output-mkdirs" map:"Mkdirs"`
 }
 
 func (o Output) CanStream() bool {
@@ -42,6 +45,10 @@ func (o Output) HasCompression() bool {
 
 func (o Output) IsEncrypted() bool {
 	return len(o.Passphrase) > 0
+}
+
+func (o Output) IsPretty() bool {
+	return o.Pretty
 }
 
 func (o Output) Path() string {
@@ -62,24 +69,20 @@ func (o Output) Options() gss.Options {
 		Format: o.Format,
 		Header: o.Header,
 		Limit:  o.Limit,
+		Pretty: o.Pretty,
 	}
 }
 
 func (o Output) Map() map[string]interface{} {
-	return map[string]interface{}{
-		"Uri":          o.Uri,
-		"Format":       o.Format,
-		"Header":       o.Header,
-		"Comment":      o.Comment,
-		"LazyQuotes":   o.LazyQuotes,
-		"Append":       o.Append,
-		"BufferMemory": o.BufferMemory,
-		"Compression":  o.Compression,
-		"Passphrase":   o.Passphrase,
-		"Salt":         o.Salt,
-		"Limit":        o.Limit,
-		"Mkdirs":       o.Mkdirs,
+	m := map[string]interface{}{}
+	v := reflect.ValueOf(o)
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("map"); len(tag) > 0 && tag != "-" {
+			m[tag] = v.Field(i).Interface()
+		}
 	}
+	return m
 }
 
 func (o *Output) Init() {

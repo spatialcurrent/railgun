@@ -11,10 +11,23 @@ import (
 	"github.com/pkg/errors"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 type QueryString struct {
 	Params map[string][]string
+}
+
+func (qs QueryString) FirstBool(name string) (bool, error) {
+	v, ok := qs.Params[name]
+	if !ok {
+		return false, &ErrQueryStringParameterMissing{Name: name}
+	}
+	if len(v) == 0 {
+		return false, errors.New("query string parameter " + name + " is empty")
+	}
+	str := strings.ToLower(v[0])
+	return str == "true" || str == "1" || str == "t" || str == "y", nil
 }
 
 func (qs QueryString) FirstString(name string) (string, error) {

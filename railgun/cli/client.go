@@ -44,7 +44,13 @@ func printConfig(v *viper.Viper) {
 	fmt.Println("=================================================")
 	fmt.Println("Configuration:")
 	fmt.Println("-------------------------------------------------")
-	str, err := gss.SerializeString(v.AllSettings(), "properties", []string{}, -1)
+	str, err := gss.SerializeString(&gss.SerializeInput{
+		Object: v.AllSettings(),
+		Format: "properties",
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+		Pretty: false,
+	})
 	if err != nil {
 		fmt.Println("error getting all settings")
 		os.Exit(1)
@@ -67,7 +73,13 @@ func MakeRequest(input *RequestInput, outputWriter grw.ByteWriteCloser, errorWri
 
 	var req *http.Request
 	if input.Method != "GET" {
-		inputBytes, err := gss.SerializeBytes(input.Object, "json", []string{}, gss.NoLimit)
+		inputBytes, err := gss.SerializeBytes(&gss.SerializeInput{
+			Object: input.Object,
+			Format: "json",
+			Header: gss.NoHeader,
+			Limit:  gss.NoLimit,
+			Pretty: false,
+		})
 		if err != nil {
 			return err
 		}
@@ -118,12 +130,29 @@ func MakeRequest(input *RequestInput, outputWriter grw.ByteWriteCloser, errorWri
 		return err
 	}
 
-	respObject, err := gss.DeserializeBytes(respBytes, "json", []string{}, "", false, gss.NoSkip, gss.NoLimit, respType, false, false)
+	respObject, err := gss.DeserializeBytes(&gss.DeserializeInput{
+		Bytes:      respBytes,
+		Format:     "json",
+		Header:     gss.NoHeader,
+		Comment:    gss.NoComment,
+		LazyQuotes: false,
+		SkipLines:  gss.NoSkip,
+		Limit:      gss.NoLimit,
+		Type:       respType,
+		Async:      false,
+		Verbose:    false,
+	})
 	if err != nil {
 		return err
 	}
 
-	outputBytes, err := gss.SerializeBytes(respObject, input.Format, []string{}, gss.NoLimit)
+	outputBytes, err := gss.SerializeBytes(&gss.SerializeInput{
+		Object: respObject,
+		Format: input.Format,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+		Pretty: false,
+	})
 	if err != nil {
 		return err
 	}

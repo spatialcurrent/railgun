@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 )
 
@@ -14,17 +15,17 @@ import (
 )
 
 type Input struct {
-	Uri              string   `viper:"input-uri"`
-	Format           string   `viper:"input-format"`
-	Header           []string `viper:"input-header"`
-	Comment          string   `viper:"input-comment"`
-	LazyQuotes       bool     `viper:"input-lazy-quotes"`
-	Compression      string   `viper:"input-compression"`
-	ReaderBufferSize int      `viper:"input-reader-buffer-size"`
-	Passphrase       string   `viper:"input-passphrase"`
-	Salt             string   `viper:"input-salt"`
-	SkipLines        int      `viper:"input-skip-lines"`
-	Limit            int      `viper:"input-limit"`
+	Uri              string   `viper:"input-uri" map:"Uri"`
+	Format           string   `viper:"input-format" map:"Format"`
+	Header           []string `viper:"input-header" map:"Header"`
+	Comment          string   `viper:"input-comment" map:"Comment"`
+	LazyQuotes       bool     `viper:"input-lazy-quotes" map:"LazyQuotes"`
+	Compression      string   `viper:"input-compression" map:"Compression"`
+	ReaderBufferSize int      `viper:"input-reader-buffer-size" map:"ReaderBufferSize"`
+	Passphrase       string   `viper:"input-passphrase" map:"Passphrase"`
+	Salt             string   `viper:"input-salt" map:"Salt"`
+	SkipLines        int      `viper:"input-skip-lines" map:"SkipLines"`
+	Limit            int      `viper:"input-limit" map:"Limit"`
 }
 
 func (i Input) CanStream() bool {
@@ -69,19 +70,15 @@ func (i Input) Options() gss.Options {
 }
 
 func (i Input) Map() map[string]interface{} {
-	return map[string]interface{}{
-		"Uri":              i.Uri,
-		"Format":           i.Format,
-		"Header":           i.Header,
-		"Comment":          i.Comment,
-		"LazyQuotes":       i.LazyQuotes,
-		"Compression":      i.Compression,
-		"ReaderBufferSize": i.ReaderBufferSize,
-		"Passphrase":       i.Passphrase,
-		"Salt":             i.Salt,
-		"SkipLines":        i.SkipLines,
-		"Limit":            i.Limit,
+	m := map[string]interface{}{}
+	v := reflect.ValueOf(i)
+	t := v.Type()
+	for j := 0; j < v.NumField(); j++ {
+		if tag := t.Field(j).Tag.Get("map"); len(tag) > 0 && tag != "-" {
+			m[tag] = v.Field(j).Interface()
+		}
 	}
+	return m
 }
 
 func (i *Input) Init() {

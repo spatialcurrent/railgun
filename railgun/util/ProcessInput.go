@@ -27,7 +27,18 @@ func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, i
 			return "", errors.Wrap(err, "error getting type for input")
 		}
 
-		inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, inputHeader, inputComment, inputLazyQuotes, inputSkipLines, inputLimit, inputType, false, verbose)
+		inputObject, err := gss.DeserializeBytes(&gss.DeserializeInput{
+			Bytes:      inputBytes,
+			Format:     inputFormat,
+			Header:     inputHeader,
+			Comment:    inputComment,
+			LazyQuotes: inputLazyQuotes,
+			SkipLines:  inputSkipLines,
+			Limit:      inputLimit,
+			Type:       inputType,
+			Async:      false,
+			Verbose:    verbose,
+		})
 		if err != nil {
 			return "", errors.Wrap(err, "error deserializing input using format "+inputFormat)
 		}
@@ -43,11 +54,12 @@ func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, i
 			outputObject = inputObject
 		}
 
-		outputString, err := gss.SerializeString(
-			gss.StringifyMapKeys(outputObject),
-			outputFormat,
-			outputHeader,
-			outputLimit)
+		outputString, err := gss.SerializeString(&gss.SerializeInput{
+			Object: gss.StringifyMapKeys(outputObject),
+			Format: outputFormat,
+			Header: outputHeader,
+			Limit:  outputLimit,
+		})
 		if err != nil {
 			return "", errors.Wrap(err, "error converting output")
 		}

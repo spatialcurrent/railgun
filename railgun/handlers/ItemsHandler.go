@@ -162,17 +162,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		return errors.Wrap(err, "error decoding input")
 	}
 
-	inputObject, err := gss.DeserializeBytes(
-		inputBytes,
-		inputFormat,
-		gss.NoHeader,
-		"",
-		false,
-		gss.NoSkip,
-		gss.NoLimit,
-		outputType,
-		false,
-		false)
+	inputObject, err := h.DeserializeBytes(inputBytes, inputFormat, outputType)
 	if err != nil {
 		return errors.Wrap(err, "error deserializing input")
 	}
@@ -186,7 +176,12 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		return errors.Wrap(err, "error processing features")
 	}
 
-	outputBytes, err := gss.SerializeBytes(gss.StringifyMapKeys(outputObject), outputFormat, []string{}, gss.NoLimit)
+	outputBytes, err := gss.SerializeBytes(&gss.SerializeInput{
+		Object: gss.StringifyMapKeys(outputObject),
+		Format: outputFormat,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+	})
 	if err != nil {
 		return errors.Wrap(err, "error converting output")
 	}

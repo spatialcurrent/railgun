@@ -81,6 +81,10 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 
 	r.AddHealthHandler("health", "/health.{ext}")
 
+	r.AddLoginHandler("login", "/login.html")
+
+	r.AddLogoutHandler("login", "/logout.html")
+
 	r.AddAuthenticateHandler("authenticate", "/authenticate.{ext}")
 
 	r.AddObjectHandler("formats", "/gss/formats.{ext}", map[string]interface{}{"formats": gss.Formats})
@@ -233,6 +237,18 @@ func (r *RailgunRouter) AddSwaggerHandler(name string, path string) {
 
 func (r *RailgunRouter) AddHealthHandler(name string, path string) {
 	r.Methods("GET").Name(name).Path(path).Handler(&handlers.HealthHandler{
+		BaseHandler: r.NewBaseHandler(),
+	})
+}
+
+func (r *RailgunRouter) AddLoginHandler(name string, path string) {
+	r.Methods("GET", "POST").Name(name).Path(path).Handler(&handlers.LoginHandler{
+		BaseHandler: r.NewBaseHandler(),
+	})
+}
+
+func (r *RailgunRouter) AddLogoutHandler(name string, path string) {
+	r.Methods("GET", "POST").Name(name).Path(path).Handler(&handlers.LogoutHandler{
 		BaseHandler: r.NewBaseHandler(),
 	})
 }

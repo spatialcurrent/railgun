@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
+	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -33,6 +34,9 @@ type ItemHandler struct {
 }
 
 func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	qs := request.NewQueryString(r)
+	pretty, _ := qs.FirstBool("pretty")
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
@@ -51,11 +55,13 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			err = h.RespondWithObject(&Response{
+				Url:        r.URL,
 				Writer:     w,
 				StatusCode: http.StatusOK,
 				Format:     format,
 				Filename:   "",
 				Object:     obj,
+				Pretty:     pretty,
 			})
 			if err != nil {
 				h.Messages <- err
@@ -78,18 +84,24 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(&Response{
-				Writer:     w,
-				StatusCode: http.StatusOK,
-				Format:     format,
-				Filename:   "",
-				Object:     obj,
-			})
-			if err != nil {
-				h.Messages <- err
-				err = h.RespondWithError(w, err, format)
+			if format == "html" {
+				// StatusSeeOther always uses method GET
+				http.Redirect(w, r, r.URL.String(), http.StatusSeeOther)
+			} else {
+				err = h.RespondWithObject(&Response{
+					Url:        r.URL,
+					Writer:     w,
+					StatusCode: http.StatusOK,
+					Format:     format,
+					Filename:   "",
+					Object:     obj,
+				})
 				if err != nil {
-					panic(err)
+					h.Messages <- err
+					err = h.RespondWithError(w, err, format)
+					if err != nil {
+						panic(err)
+					}
 				}
 			}
 		}
@@ -106,18 +118,23 @@ func (h *ItemHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				panic(err)
 			}
 		} else {
-			err = h.RespondWithObject(&Response{
-				Writer:     w,
-				StatusCode: http.StatusOK,
-				Format:     format,
-				Filename:   "",
-				Object:     obj,
-			})
-			if err != nil {
-				h.Messages <- err
-				err = h.RespondWithError(w, err, format)
+			if format == "html" {
+				// StatusSeeOther always uses method GET
+				http.Redirect(w, r, r.URL.String(), http.StatusSeeOther)
+			} else {
+				err = h.RespondWithObject(&Response{
+					Writer:     w,
+					StatusCode: http.StatusOK,
+					Format:     format,
+					Filename:   "",
+					Object:     obj,
+				})
 				if err != nil {
-					panic(err)
+					h.Messages <- err
+					err = h.RespondWithError(w, err, format)
+					if err != nil {
+						panic(err)
+					}
 				}
 			}
 		}
@@ -179,19 +196,29 @@ func (h *ItemHandler) Post(w http.ResponseWriter, r *http.Request, format string
 		return nil, errors.Wrap(&rerrors.ErrMissingObject{Type: h.Singular, Name: name}, "error updating "+h.Singular)
 	}
 
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return nil, errors.Wrap(err, "error reading from request body")
+	raw := make([]byte, 0)
+	itemFormat := ""
+	if format == "html" {
+		r.ParseForm()
+		raw = []byte(r.FormValue("item"))
+		itemFormat = "json"
+	} else {
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			return nil, errors.Wrap(err, "error reading from request body")
+		}
+		raw = body
+		itemFormat = format
 	}
 
-	obj, err := h.ParseBody(body, format)
+	obj, err := h.ParseBody(raw, itemFormat)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error parsing body")
 	}
 
 	item, err := h.Catalog.ParseItem(obj, h.Type)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error parsing item")
 	}
 
 	if item.GetName() != name {

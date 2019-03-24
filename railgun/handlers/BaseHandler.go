@@ -182,7 +182,7 @@ func (h *BaseHandler) ParseBody(inputBytes []byte, format string) (interface{}, 
 		return nil, err
 	}
 
-	inputObject, err := gss.DeserializeBytes(inputBytes, format, []string{}, "", false, gss.NoSkip, gss.NoLimit, inputType, false, false)
+	inputObject, err := h.DeserializeBytes(inputBytes, format, inputType)
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing body")
 	}
@@ -194,7 +194,7 @@ func (h *BaseHandler) ParseBody(inputBytes []byte, format string) (interface{}, 
 func (h *BaseHandler) RespondWithObject(resp *Response) error {
 
 	if resp.Format == "html" {
-		code, err := json.MarshalIndent(resp.Object, "", "    ")
+		code, err := json.MarshalIndent(gtg.TryGet(resp.Object, "item", resp.Object), "", "    ")
 		if err != nil {
 			return errors.Wrap(err, "error serializing response body")
 		}
@@ -211,7 +211,7 @@ func (h *BaseHandler) RespondWithObject(resp *Response) error {
 		if err != nil {
 			return errors.Wrap(err, "error writing chroma styles")
 		}
-		head.WriteString("pre.chroma { border:2px solid black; padding: 20px; }")
+		head.WriteString("pre { border:2px solid black; padding: 20px; }")
 		head.WriteString("</style>")
 		lexer := chroma.Coalesce(lexers.Get("json"))
 		iterator, err := lexer.Tokenise(nil, string(code))
@@ -223,6 +223,10 @@ func (h *BaseHandler) RespondWithObject(resp *Response) error {
 		if err != nil {
 			return errors.Wrap(err, "error formatting preview")
 		}
+		requestUrlPath := ""
+		if resp.Url != nil {
+			requestUrlPath = resp.Url.Path
+		}
 		html := `
     <html>
       <head>` + head.String() + `</head>
@@ -231,14 +235,31 @@ func (h *BaseHandler) RespondWithObject(resp *Response) error {
           <div class="row"><div class="col-md-12 h2">Items</div></div>
           <hr>
           <div class="row">
-            <div class="col-md-2">
-              <h4>Actions</h4>
-              <button type="submit" class="btn btn-block btn-primary">Update</button>
-              <button type="submit" class="btn btn-block btn-danger">Delete</button>
+            <div class="col-sm-2">
+              <!--<h4>Actions</h4>
+              <button type="submit" class="btn btn-block btn-danger">Delete</button>-->
             </div>
-            <div class="col-sm-10">
-              <h4>Preview</h4>
-              ` + preview.String() + `
+            <div class="col-sm-8">
+						  <nav>
+								<div class="nav nav-tabs" id="nav-tab" role="tablist" style="margin-bottom: 8px;">
+								  <a class="nav-item nav-link active" id="nav-preview-tab" data-toggle="tab" href="#nav-preview" role="tab" aria-controls="nav-preview" aria-selected="true">Preview</a>
+									<a class="nav-item nav-link" id="nav-edit-tab" data-toggle="tab" href="#nav-edit" role="tab" aria-controls="nav-edit" aria-selected="false">Edit</a>
+								</div>
+							</nav>
+							<div class="tab-content" id="nav-tabContent">
+							  <div class="tab-pane fade show active" id="nav-preview" role="tabpanel" aria-labelledby="nav-preview-tab">
+									` + preview.String() + `
+								</div>
+							  <div class="tab-pane fade" id="nav-edit" role="tabpanel" aria-labelledby="nav-edit-tab">
+							    <form action="` + requestUrlPath + `" method="post">
+								    <pre id="code" contenteditable="true">` + string(code) + `</pre>
+										<input id="item" type="hidden" name="item" value="">
+									  <button type="submit" class="btn btn-block btn-primary" onclick="document.getElementById('item').value = document.getElementById('code').textContent">Update</button>
+									</form>
+								</div>
+							</div>
+            </div>
+						<div class="col-sm-2">
             </div>
           </div>
         </div>
@@ -251,7 +272,13 @@ func (h *BaseHandler) RespondWithObject(resp *Response) error {
 		return nil
 	}
 
-	b, err := gss.SerializeBytes(resp.Object, resp.Format, []string{}, gss.NoLimit)
+	b, err := gss.SerializeBytes(&gss.SerializeInput{
+		Object: resp.Object,
+		Format: resp.Format,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+		Pretty: resp.Pretty,
+	})
 	if err != nil {
 		return errors.Wrap(err, "error serializing response body")
 	}
@@ -282,11 +309,6 @@ func (h *BaseHandler) RespondWithObject(resp *Response) error {
 
 func (h *BaseHandler) RespondWithError(w http.ResponseWriter, err error, format string) error {
 
-	b, serr := gss.SerializeBytes(map[string]interface{}{"success": false, "error": err.Error()}, format, []string{}, gss.NoLimit)
-	if serr != nil {
-		return serr
-	}
-
 	switch errors.Cause(err).(type) {
 	case *rerrors.ErrMissingRequiredParameter:
 		w.WriteHeader(http.StatusBadRequest)
@@ -298,16 +320,64 @@ func (h *BaseHandler) RespondWithError(w http.ResponseWriter, err error, format 
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
+	if format == "html" {
+		w.Write([]byte(err.Error()))
+		return nil
+	}
+
+	b, serr := gss.SerializeBytes(&gss.SerializeInput{
+		Object: map[string]interface{}{"success": false, "error": err.Error()},
+		Format: format,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+		Pretty: false,
+	})
+	if serr != nil {
+		return serr
+	}
+
 	w.Write(b) // #nosec
 	return nil
 }
 
 func (h *BaseHandler) RespondWithNotImplemented(w http.ResponseWriter, format string) error {
-	b, err := gss.SerializeBytes(map[string]interface{}{"success": false, "error": "not implemented"}, format, []string{}, gss.NoLimit)
+	if format == "html" {
+		w.WriteHeader(http.StatusNotImplemented)
+		w.Write([]byte("Not implemented"))
+		return nil
+	}
+	b, err := gss.SerializeBytes(&gss.SerializeInput{
+		Object: map[string]interface{}{"success": false, "error": "not implemented"},
+		Format: format,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+		Pretty: false,
+	})
 	if err != nil {
 		return err
 	}
 	w.WriteHeader(http.StatusNotImplemented)
+	w.Write(b) // #nosec
+	return nil
+}
+
+func (h *BaseHandler) RespondWithBadRequest(w http.ResponseWriter, format string) error {
+	if format == "html" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Bad request"))
+		return nil
+	}
+	b, err := gss.SerializeBytes(&gss.SerializeInput{
+		Object: map[string]interface{}{"success": false, "error": "Bad request"},
+		Format: format,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+		Pretty: false,
+	})
+	if err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusBadRequest)
 	w.Write(b) // #nosec
 	return nil
 }
@@ -354,14 +424,20 @@ func (h *BaseHandler) ParseVariables(body []byte, format string) (map[string]int
 	return map[string]interface{}{}, nil
 }
 
-func (h *BaseHandler) DeserializeBytes(inputBytes []byte, inputFormat string) (interface{}, error) {
+func (h *BaseHandler) DeserializeBytes(inputBytes []byte, inputFormat string, inputType reflect.Type) (interface{}, error) {
 
-	inputType, err := gss.GetType(inputBytes, inputFormat)
-	if err != nil {
-		return nil, errors.Wrap(err, "error getting type for input")
-	}
-
-	object, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, gss.NoComment, false, gss.NoSkip, gss.NoLimit, inputType, false, false)
+	object, err := gss.DeserializeBytes(&gss.DeserializeInput{
+		Bytes:      inputBytes,
+		Format:     inputFormat,
+		Header:     gss.NoHeader,
+		Comment:    gss.NoComment,
+		LazyQuotes: false,
+		SkipLines:  gss.NoSkip,
+		Limit:      gss.NoLimit,
+		Type:       inputType,
+		Async:      false,
+		Verbose:    false,
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
 	}

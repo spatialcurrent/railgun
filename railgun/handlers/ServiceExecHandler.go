@@ -29,8 +29,10 @@ import (
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	//"github.com/spatialcurrent/go-try-get/gtg"
+	"github.com/spatialcurrent/go-adaptive-functions/af"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/middleware"
+	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -42,6 +44,8 @@ type ServiceExecHandler struct {
 func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
+
+	qs := request.NewQueryString(r)
 
 	vars := mux.Vars(r)
 
@@ -61,7 +65,7 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Catalog.RLock()
 		defer once.Do(func() { h.Catalog.RUnlock() })
 		h.SendDebug("read locked for " + r.URL.String())
-		obj, err := h.Post(w, r.WithContext(ctx), format, vars)
+		obj, err := h.Post(w, r.WithContext(ctx), format, vars, qs)
 		once.Do(func() { h.Catalog.RUnlock() })
 		h.SendDebug("read unlocked for " + r.URL.String())
 		if err != nil {
@@ -96,7 +100,7 @@ func (h *ServiceExecHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (object interface{}, err error) {
+func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format string, vars map[string]string, qs request.QueryString) (object interface{}, err error) {
 
 	ctx := r.Context()
 
@@ -137,10 +141,24 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, errors.Wrap(err, "error parsing variables from body")
 	}
 
+	bbox := make([]float64, 0)
+	if str, err := qs.FirstString("bbox"); err != nil && len(str) > 0 {
+		floats, err := af.ToFloat64Array.ValidateRun([]interface{}{strings.Split(str, ",")})
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid bounding box parameter")
+		}
+		bbox = floats.([]float64)
+	}
+
 	variables := h.AggregateMaps(
 		h.GetServiceVariables(h.Cache, serviceName),
 		service.Defaults,
-		jobVariables)
+		jobVariables,
+		map[string]interface{}{
+			"bbox": bbox,
+		},
+		service.DataStore.Vars,
+	)
 
 	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
@@ -270,7 +288,12 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 					inputBytes = b
 				}
 
-				object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
+				inputType, err := gss.GetType(inputBytes, service.DataStore.Format)
+				if err != nil {
+					return errors.Wrap(err, "error getting type")
+				}
+
+				object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format, inputType)
 				if err != nil {
 					return errors.Wrap(err, "error deserializing input")
 				}

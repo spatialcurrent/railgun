@@ -8,6 +8,7 @@
 package handlers
 
 import (
+	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
 	"net/http"
 )
@@ -19,6 +20,9 @@ type ObjectHandler struct {
 
 func (h *ObjectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+	qs := request.NewQueryString(r)
+	pretty, _ := qs.FirstBool("pretty")
+
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
 	switch r.Method {
@@ -29,6 +33,7 @@ func (h *ObjectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Format:     format,
 			Filename:   "",
 			Object:     h.Object,
+			Pretty:     pretty,
 		})
 		if err != nil {
 			h.Messages <- err

@@ -26,11 +26,13 @@ import (
 	"github.com/gorilla/mux"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
+	"github.com/spatialcurrent/go-adaptive-functions/af"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/middleware"
+	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -42,6 +44,8 @@ type ServiceDownloadHandler struct {
 func (h *ServiceDownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
+
+	qs := request.NewQueryString(r)
 
 	vars := mux.Vars(r)
 
@@ -61,7 +65,7 @@ func (h *ServiceDownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		h.Catalog.RLock()
 		defer once.Do(func() { h.Catalog.RUnlock() })
 		h.SendDebug("read locked for " + r.URL.String())
-		filename, obj, err := h.Get(w, r.WithContext(ctx), format, vars)
+		filename, obj, err := h.Get(w, r.WithContext(ctx), format, vars, qs)
 		once.Do(func() { h.Catalog.RUnlock() })
 		h.SendDebug("read unlocked for " + r.URL.String())
 		if err != nil {
@@ -95,7 +99,7 @@ func (h *ServiceDownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 
 }
 
-func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, format string, vars map[string]string) (filename string, object interface{}, err error) {
+func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, format string, vars map[string]string, qs request.QueryString) (filename string, object interface{}, err error) {
 
 	ctx := r.Context()
 
@@ -135,9 +139,23 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 		return "", nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
 	}
 
+	bbox := make([]float64, 0)
+	if str, err := qs.FirstString("bbox"); err != nil && len(str) > 0 {
+		floats, err := af.ToFloat64Array.ValidateRun([]interface{}{strings.Split(str, ",")})
+		if err != nil {
+			return "", nil, errors.Wrap(err, "invalid bounding box parameter")
+		}
+		bbox = floats.([]float64)
+	}
+
 	variables := h.AggregateMaps(
 		h.GetServiceVariables(h.Cache, serviceName),
-		service.Defaults)
+		service.Defaults,
+		map[string]interface{}{
+			"bbox": bbox,
+		},
+		service.DataStore.Vars,
+	)
 
 	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
@@ -262,7 +280,12 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 					inputBytes = b
 				}
 
-				object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
+				inputType, err := gss.GetType(inputBytes, service.DataStore.Format)
+				if err != nil {
+					return errors.Wrap(err, "error getting type")
+				}
+
+				object, err := h.DeserializeBytes(inputBytes, service.DataStore.Format, inputType)
 				if err != nil {
 					return errors.Wrap(err, "error deserializing input")
 				}

@@ -178,7 +178,7 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 			continue
 		}
 
-		inputObject, err := gss.DeserializeBytes(inputBytes, inputFormat, gss.NoHeader, "", false, gss.NoSkip, gss.NoLimit, inputType, false, false)
+		inputObject, err := h.DeserializeBytes(inputBytes, inputFormat, inputType)
 		if err != nil {
 			errorWriter.WriteError(errors.Wrap(err, "error deserializing input using format "+inputFormat)) // #nosec
 			exitCodes[job.Name] = 1
@@ -194,7 +194,12 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 
 		if job.Output != nil {
 
-			outputBytes, err := gss.SerializeBytes(outputObject, job.Output.Format, []string{}, gss.NoLimit)
+			outputBytes, err := gss.SerializeBytes(&gss.SerializeInput{
+				Object: outputObject,
+				Format: job.Output.Format,
+				Header: gss.NoHeader,
+				Limit:  gss.NoLimit,
+			})
 			if err != nil {
 				errorWriter.WriteError(errors.Wrap(err, "error serializing output using format "+job.Output.Format)) // #nosec
 				exitCodes[job.Name] = 1

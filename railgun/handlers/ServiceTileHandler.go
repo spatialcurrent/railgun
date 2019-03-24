@@ -245,7 +245,9 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	variables := h.AggregateMaps(
 		h.GetServiceVariables(h.Cache, serviceName),
 		service.Defaults,
-		tile.Map())
+		tile.Map(),
+		service.DataStore.Vars,
+	)
 	variables["bbox"] = bufferedBoundingBox
 	//variables["limit"] = limit
 
@@ -393,7 +395,11 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 				ctx.Context = context.WithValue(ctx.Context, "error", err)
 				return nil, err
 			}
-			inputSlice, err := h.DeserializeBytes(inputBytes, service.DataStore.Format)
+			inputType, err := gss.GetType(inputBytes, service.DataStore.Format)
+			if err != nil {
+				return nil, errors.Wrap(err, "error getting type")
+			}
+			inputSlice, err := h.DeserializeBytes(inputBytes, service.DataStore.Format, inputType)
 			if err != nil {
 				err := errors.Wrap(err, "error deserializing input")
 				ctx.Context = context.WithValue(ctx.Context, "error", err)

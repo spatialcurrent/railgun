@@ -35,5 +35,10 @@ func (cr CacheRequest) Map() map[string]interface{} {
 }
 
 func (cr CacheRequest) Serialize(format string) (string, error) {
-	return gss.SerializeString(cr.Map(), format, []string{}, -1)
+	return gss.SerializeString(&gss.SerializeInput{
+		Object: cr.Map(),
+		Format: format,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+	})
 }

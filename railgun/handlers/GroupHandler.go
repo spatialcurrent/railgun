@@ -23,6 +23,7 @@ import (
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/middleware"
+	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
 )
 
@@ -34,6 +35,9 @@ type GroupHandler struct {
 func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	//fmt.Println("Adding:", r.Context())
+
+	qs := request.NewQueryString(r)
+	pretty, _ := qs.FirstBool("pretty")
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
 
@@ -52,11 +56,13 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			err = h.RespondWithObject(&Response{
+				Url:        r.URL,
 				Writer:     w,
 				StatusCode: http.StatusOK,
 				Format:     format,
 				Filename:   "",
 				Object:     obj,
+				Pretty:     pretty,
 			})
 			if err != nil {
 				h.Messages <- err
@@ -84,6 +90,7 @@ func (h *GroupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Format:     format,
 				Filename:   "",
 				Object:     obj,
+				Pretty:     pretty,
 			})
 			if err != nil {
 				h.Messages <- err

@@ -170,7 +170,13 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	verbose := v.GetBool("verbose")
 
 	if verbose {
-		str, err := gss.SerializeString(v.AllSettings(), "properties", gss.NoHeader, gss.NoLimit)
+		str, err := gss.SerializeString(&gss.SerializeInput{
+			Object: v.AllSettings(),
+			Format: "properties",
+			Header: gss.NoHeader,
+			Limit:  gss.NoLimit,
+			Pretty: false,
+		})
 		if err != nil {
 			fmt.Println(errors.Wrap(err, "error getting all settings for config"))
 			os.Exit(1)

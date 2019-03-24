@@ -91,6 +91,7 @@ func init() {
 	rootCmd.PersistentFlags().IntP("file-descriptor-limit", "", 4096, "limit to the number of open files")
 
 	// Debub Flags
+	rootCmd.PersistentFlags().BoolP("time", "t", false, "print timing output to info log")
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "print verbose output to stdout")
 
 	// Logging Flags
@@ -102,7 +103,7 @@ func init() {
 	rootCmd.PersistentFlags().String("error-format", "text", "error log format: text, properties, json, yaml, etc.")
 
 	// Runtime Flags
-	serveCmd.PersistentFlags().Int("runtime-max-procs", 1, "Sets the maximum number of parallel processes.  If set to zero, then sets the maximum number of parallel processes to the number of CPUs on the machine. (https://godoc.org/runtime#GOMAXPROCS).")
+	rootCmd.PersistentFlags().Int("runtime-max-procs", 1, "Sets the maximum number of parallel processes.  If set to zero, then sets the maximum number of parallel processes to the number of CPUs on the machine. (https://godoc.org/runtime#GOMAXPROCS).")
 
 }
 

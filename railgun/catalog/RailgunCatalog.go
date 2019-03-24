@@ -105,6 +105,10 @@ func (c *RailgunCatalog) ParseDataStore(obj interface{}) (*core.DataStore, error
 	if !found {
 		return &core.DataStore{}, &rerrors.ErrMissingObject{Type: "workspace", Name: workspaceName}
 	}
+	vars, err := parser.ParseMap(obj, "vars")
+	if err != nil {
+		return &core.DataStore{}, err
+	}
 	ds := &core.DataStore{
 		Workspace:   workspace,
 		Name:        name,
@@ -114,6 +118,7 @@ func (c *RailgunCatalog) ParseDataStore(obj interface{}) (*core.DataStore, error
 		Format:      format,
 		Compression: compression,
 		Extent:      extent,
+		Vars:        vars,
 	}
 	return ds, nil
 }
@@ -565,7 +570,18 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *gsl.Logger, s3_client *
 			return nil, err
 		}
 
-		inputObject, err := gss.DeserializeBytes(inputBytes, format, gss.NoHeader, "", false, gss.NoSkip, gss.NoLimit, inputType, false, false)
+		inputObject, err := gss.DeserializeBytes(&gss.DeserializeInput{
+			Bytes:      inputBytes,
+			Format:     format,
+			Header:     gss.NoHeader,
+			Comment:    gss.NoComment,
+			LazyQuotes: false,
+			SkipLines:  gss.NoSkip,
+			Limit:      gss.NoLimit,
+			Type:       inputType,
+			Async:      false,
+			Verbose:    false,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -1069,7 +1085,13 @@ func (c *RailgunCatalog) SaveToUri(uri string, s3_client *s3.S3) error {
 			return &rerrors.ErrInvalidConfig{Name: "catalog-uri", Value: uri}
 		}
 
-		b, err := gss.SerializeBytes(data, format, gss.NoHeader, gss.NoLimit)
+		b, err := gss.SerializeBytes(&gss.SerializeInput{
+			Object: data,
+			Format: format,
+			Header: gss.NoHeader,
+			Limit:  gss.NoLimit,
+			Pretty: false,
+		})
 		if err != nil {
 			return errors.Wrap(err, "error serializing catalog")
 		}

@@ -58,5 +58,10 @@ func (tr TileRequest) Map() map[string]interface{} {
 }
 
 func (tr TileRequest) Serialize(format string) (string, error) {
-	return gss.SerializeString(tr.Map(), format, gss.NoHeader, gss.NoLimit)
+	return gss.SerializeString(&gss.SerializeInput{
+		Object: tr.Map(),
+		Format: format,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+	})
 }

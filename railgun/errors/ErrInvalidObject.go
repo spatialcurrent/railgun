@@ -17,7 +17,13 @@ type ErrInvalidObject struct {
 
 func (e *ErrInvalidObject) Error() string {
 	str := "invalid object"
-	value, err := gss.SerializeString(e.Value, "json", gss.NoHeader, gss.NoLimit)
+	value, err := gss.SerializeString(&gss.SerializeInput{
+		Object: e.Value,
+		Format: "json",
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+		Pretty: false,
+	})
 	if err == nil {
 		str += " : " + value
 	}

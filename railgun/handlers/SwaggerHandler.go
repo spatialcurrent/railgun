@@ -698,7 +698,12 @@ func (h *SwaggerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, format, _ := util.SplitNameFormatCompression(r.URL.Path)
-	b, err := gss.SerializeBytes(swaggerDocument, format, []string{}, -1)
+	b, err := gss.SerializeBytes(&gss.SerializeInput{
+		Object: swaggerDocument,
+		Format: format,
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+	})
 	if err != nil {
 		h.Messages <- err
 		return
