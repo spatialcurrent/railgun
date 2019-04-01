@@ -104,7 +104,6 @@ func init() {
 
 	// Runtime Flags
 	rootCmd.PersistentFlags().Int("runtime-max-procs", 1, "Sets the maximum number of parallel processes.  If set to zero, then sets the maximum number of parallel processes to the number of CPUs on the machine. (https://godoc.org/runtime#GOMAXPROCS).")
-
 }
 
 // initConfig reads in config file and ENV variables if set.

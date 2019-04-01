@@ -1,8 +1,11 @@
 package config
 
 import (
-	"github.com/spatialcurrent/viper"
 	"reflect"
+)
+
+import (
+	"github.com/spatialcurrent/viper"
 )
 
 func LoadConfigFromViper(c interface{}, v *viper.Viper) {
@@ -20,14 +23,21 @@ func LoadConfigFromViper(c interface{}, v *viper.Viper) {
 			}
 		} else {
 			if key, ok := structField.Tag.Lookup("viper"); ok && key != "" && key != "-" {
-				if fieldType.Kind() == reflect.String {
+				switch fieldType.Kind() {
+				case reflect.String:
 					fieldValue.SetString(v.GetString(key))
-				} else if fieldType.Kind() == reflect.Bool {
+				case reflect.Bool:
 					fieldValue.SetBool(v.GetBool(key))
-				} else if fieldType.Kind() == reflect.Int {
+				case reflect.Int:
 					fieldValue.SetInt(int64(v.GetInt(key)))
-				} else if fieldType.Kind() == reflect.Slice && fieldType.Elem().Kind() == reflect.String {
-					fieldValue.Set(reflect.ValueOf(v.GetStringSlice(key)))
+				case reflect.Slice:
+					if fieldType.Elem().Kind() == reflect.String {
+						fieldValue.Set(reflect.ValueOf(v.GetStringSlice(key)))
+					}
+				default:
+					if fieldType.Name() == "Duration" {
+						fieldValue.Set(reflect.ValueOf(v.GetDuration(key)))
+					}
 				}
 			}
 		}

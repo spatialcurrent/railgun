@@ -15,7 +15,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	//"io/ioutil"
 	"os"
@@ -29,6 +28,7 @@ import (
 
 import (
 	"github.com/mitchellh/go-homedir"
+	"github.com/pkg/errors"
 	"github.com/spatialcurrent/cobra"
 	"github.com/spatialcurrent/viper"
 )
@@ -59,8 +59,27 @@ var GO_RAILGUN_DEFAULT_SALT = "4F56C8C88B38CD8CD96BF8A9724F4BFE"
 
 var processViper = viper.New()
 
+func printSettings(v *viper.Viper) {
+	fmt.Println("=================================================")
+	fmt.Println("Viper:")
+	fmt.Println("-------------------------------------------------")
+	str, err := gss.SerializeString(&gss.SerializeInput{
+		Object: v.AllSettings(),
+		Format: "properties",
+		Header: gss.NoHeader,
+		Limit:  gss.NoLimit,
+		Pretty: false,
+	})
+	if err != nil {
+		fmt.Println(errors.Wrap(err, "error serializing viper settings").Error())
+		os.Exit(1)
+	}
+	fmt.Println(str)
+	fmt.Println("=================================================")
+}
+
 //outputUri string, outputCompression string, outputAppend bool, outputPassphrase string, outputSalt string,
-func processOutput(content string, output *config.Output, s3_client *s3.S3) error {
+func processOutput(content string, output *config.Output, s3Client *s3.S3) error {
 	if output.Uri == "stdout" {
 		if output.IsEncrypted() {
 			return errors.New("encryption only works with file output")
@@ -73,7 +92,7 @@ func processOutput(content string, output *config.Output, s3_client *s3.S3) erro
 		fmt.Fprintf(os.Stderr, content)
 	} else {
 
-		outputWriter, err := grw.WriteToResource(output.Uri, output.Compression, output.Append, s3_client)
+		outputWriter, err := grw.WriteToResource(output.Uri, output.Compression, output.Append, s3Client)
 		if err != nil {
 			return errors.Wrap(err, "error opening output file")
 		}
@@ -157,59 +176,272 @@ func buildOptions(inputLine []byte, inputFormat string, inputHeader []string, in
 	return options, errors.New("invalid input format for handleInput " + inputFormat)
 }
 
-func handleInput(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, errorsChannel chan interface{}, verbose bool) error {
-
-	go func() {
-
-		for inputLine := range inputLines {
-			options, err := buildOptions(
-				inputLine,
-				input.Format,
-				input.Header,
-				input.Comment,
-				input.LazyQuotes)
-			if err != nil {
-				errorsChannel <- errors.Wrap(err, "invalid options for input line "+string(inputLine))
-				continue
+// handleInputFromSV reads input from a CSV/TSV separated values format
+func handleInputFromSV(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, logger *gsl.Logger, verbose bool) {
+	inputType := reflect.TypeOf(map[string]string{})
+	for inputLine := range inputLines {
+		logger.Debug(map[string]string{
+			"msg":  "Processing line",
+			"line": string(inputLine),
+		})
+		logger.Flush()
+		inputObject, err := gss.DeserializeBytes(&gss.DeserializeInput{
+			Bytes:      inputLine,
+			Format:     input.Format,
+			Header:     input.Header,
+			Comment:    input.Comment,
+			LazyQuotes: input.LazyQuotes,
+			SkipLines:  gss.NoSkip,
+			Limit:      1,
+			Type:       inputType,
+			Async:      false,
+			Verbose:    verbose,
+		})
+		if err != nil {
+			logger.Error(errors.Wrap(err, "error deserializing input"))
+			continue
+		}
+		outputObject, err := processObject(inputObject, node, vars)
+		if err != nil {
+			switch err.(type) {
+			case *gss.ErrEmptyRow:
+			default:
+				logger.Error(errors.Wrap(err, "error processing object"))
 			}
-			inputObject, err := options.DeserializeBytes(inputLine, verbose)
-			if err != nil {
-				errorsChannel <- errors.Wrap(err, "error deserializing input using options "+fmt.Sprint(options))
-				continue
-			}
-			outputObject, err := processObject(inputObject, node, vars)
-			if err != nil {
-				switch err.(type) {
-				case *gss.ErrEmptyRow:
-				default:
-					errorsChannel <- errors.Wrap(err, "error processing object")
-				}
-			} else {
-				switch outputObject.(type) {
-				case dfl.Null:
-				default:
-					outputObjects <- outputObject
-				}
+		} else {
+			switch outputObject.(type) {
+			case dfl.Null:
+			default:
+				outputObjects <- outputObject
 			}
 		}
-		close(outputObjects)
+	}
+	logger.Debug("input lines channel was closed")
+	logger.Flush()
+	close(outputObjects)
+}
+
+func handleInputFromJSONL(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, logger *gsl.Logger, verbose bool) {
+	for inputLine := range inputLines {
+		var inputType reflect.Type
+		if str := strings.TrimLeftFunc(string(inputLine), unicode.IsSpace); len(str) > 0 && str[0] == '[' {
+			inputType = reflect.TypeOf([]interface{}{})
+		} else {
+			inputType = reflect.TypeOf(map[string]interface{}{})
+		}
+		inputObject, err := gss.DeserializeBytes(&gss.DeserializeInput{
+			Bytes:      inputLine,
+			Format:     "json",
+			Header:     input.Header,
+			Comment:    input.Comment,
+			LazyQuotes: input.LazyQuotes,
+			SkipLines:  gss.NoSkip,
+			Limit:      gss.NoLimit,
+			Type:       inputType,
+			Async:      false,
+			Verbose:    verbose,
+		})
+		if err != nil {
+			logger.Error(errors.Wrap(err, "error deserializing input"))
+			continue
+		}
+		outputObject, err := processObject(inputObject, node, vars)
+		if err != nil {
+			switch err.(type) {
+			case *gss.ErrEmptyRow:
+			default:
+				logger.Error(errors.Wrap(err, "error processing object"))
+			}
+		} else {
+			switch outputObject.(type) {
+			case dfl.Null:
+			default:
+				outputObjects <- outputObject
+			}
+		}
+	}
+	close(outputObjects)
+}
+
+func writeBuffersToFiles(buffers map[string]struct {
+	Writer grw.ByteWriteCloser
+	Buffer *bytes.Buffer
+}, mkdirs bool, append bool, s3Client *s3.S3, logger *gsl.Logger) {
+	logger.Debug(map[string]interface{}{
+		"msg":     "Writing buffers to files",
+		"buffers": len(buffers),
+	})
+	logger.Flush()
+	for outputPath, outputBuffer := range buffers {
+		err := outputBuffer.Writer.Close()
+		if err != nil {
+			logger.Info("* error closing output buffer for " + outputPath)
+		}
+		if mkdirs {
+			err := os.MkdirAll(filepath.Dir(outputPath), 0750)
+			if err != nil {
+				logger.Info("* error creating parent directories for file at " + outputPath)
+			}
+		}
+		outputWriter, err := grw.WriteToResource(outputPath, "", append, s3Client)
+		if err != nil {
+			logger.Info("* error opening output file at " + outputPath)
+		}
+		//_, err = ioutil.Copy(outputWriter, snappy.NewReader(bytes.NewReader(outputBuffer.Buffer.Bytes())))
+		//_, err = outputWriter.Write(outputBuffer.Buffer.Bytes())
+		_, err = io.Copy(outputWriter, outputBuffer.Buffer)
+		if err != nil {
+			logger.Info("* error writing buffer to output file at " + outputPath)
+		}
+		err = outputWriter.Close()
+		if err != nil {
+			logger.Info("* error closing output file at " + outputPath)
+		}
+		// delete output buffer and writer, since done writing to file
+		delete(buffers, outputPath)
+	}
+	logger.Debug("Done writing buffers to files")
+	logger.Flush()
+}
+
+func handleOutputWithMemoryBuffer(output *config.Output, outputVars map[string]interface{}, objects chan interface{}, fileDescriptorLimit int, wg *sync.WaitGroup, s3Client *s3.S3, logger *gsl.Logger, verbose bool) error {
+
+	if verbose {
+		logger.Debug("handleOutputWithMemoryBuffer")
+		logger.Flush()
+	}
+
+	n, err := dfl.ParseCompile(output.Uri)
+	if err != nil {
+		return errors.Wrap(err, "error parsing output uri: "+output.Uri)
+	}
+	outputNode := n
+
+	outputLines := make(chan struct {
+		Path string
+		Line string
+	}, 1000)
+
+	outputPathBuffersMutex := &sync.RWMutex{}
+	outputPathBuffers := map[string]struct {
+		Writer grw.ByteWriteCloser
+		Buffer *bytes.Buffer
+	}{}
+
+	go func() {
+		for line := range outputLines {
+
+			logger.Debug(map[string]string{
+				"msg":  "Writing output line",
+				"path": line.Path,
+				"line": line.Line,
+			})
+			logger.Flush()
+
+			outputPathBuffersMutex.RLock()
+			if _, ok := outputPathBuffers[line.Path]; !ok {
+				outputPathBuffersMutex.RUnlock()
+				outputPathBuffersMutex.Lock()
+
+				//outputWriter, outputBuffer, err := grw.WriteSnappyBytes(output.Compression)
+				outputWriter, outputBuffer, err := grw.WriteBytes(output.Compression)
+				if err != nil {
+					panic(err)
+				}
+
+				outputPathBuffers[line.Path] = struct {
+					Writer grw.ByteWriteCloser
+					Buffer *bytes.Buffer
+				}{Writer: outputWriter, Buffer: outputBuffer}
+
+				logger.Debug(map[string]string{
+					"msg":  "Created buffer for path",
+					"path": line.Path,
+				})
+				logger.Flush()
+
+				outputPathBuffersMutex.Unlock()
+				outputPathBuffersMutex.RLock()
+			}
+
+			_, err := outputPathBuffers[line.Path].Writer.WriteLineSafe(line.Line)
+			if err != nil {
+				panic(err)
+			}
+			outputPathBuffersMutex.RUnlock()
+		}
+
+		logger.Debug("Done processing output lines")
+		logger.Flush()
+
+		if len(outputPathBuffers) > 0 {
+			logger.Info("writing buffers to files")
+			logger.Flush()
+			writeBuffersToFiles(outputPathBuffers, output.Mkdirs, output.Append, s3Client, logger)
+		}
+		wg.Done()
 	}()
+
+	if verbose {
+		logger.Debug("starting to process objects")
+		logger.Flush()
+	}
+
+	go func() {
+		for object := range objects {
+			outputPath, err := processObject(object, outputNode, outputVars)
+			if err != nil {
+				logger.Error(errors.Wrap(err, "Error writing string to output file"))
+				break
+			}
+
+			if reflect.TypeOf(outputPath).Kind() != reflect.String {
+				logger.Error(errors.Wrap(err, "output path is not a string"))
+				break
+			}
+
+			outputPathString, err := homedir.Expand(outputPath.(string))
+			if err != nil {
+				logger.Error(errors.Wrap(err, "output path cannot be expanded"))
+				break
+			}
+
+			line, err := formatObject(object, output.Format, output.Header)
+			if err != nil {
+				logger.Error(errors.Wrap(err, "error formatting object"))
+				break
+			}
+
+			outputLines <- struct {
+				Path string
+				Line string
+			}{Path: outputPathString, Line: line}
+		}
+		close(outputLines)
+		logger.Info("output lines closed")
+		logger.Flush()
+	}()
+
 	return nil
 }
 
-func handleOutput(output *config.Output, outputVars map[string]interface{}, objects chan interface{}, errorsChannel chan interface{}, messages chan interface{}, fileDescriptorLimit int, wg *sync.WaitGroup, s3_client *s3.S3, verbose bool) error {
+func handleOutput(output *config.Output, outputVars map[string]interface{}, objects chan interface{}, fileDescriptorLimit int, wg *sync.WaitGroup, s3Client *s3.S3, logger *gsl.Logger, verbose bool) error {
+
+	if verbose {
+		logger.Debug("handleOutput")
+		logger.Flush()
+	}
 
 	if output.Uri == "stdout" {
 		go func() {
 			for object := range objects {
 				line, err := formatObject(object, output.Format, output.Header)
 				if err != nil {
-					errorsChannel <- errors.Wrap(err, "error formatting object")
+					logger.Error(errors.Wrap(err, "error formatting object"))
 					break
 				}
-				messages <- line
+				fmt.Println(line)
 			}
-			close(messages)
 			wg.Done()
 		}()
 		return nil
@@ -220,21 +452,23 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 			for object := range objects {
 				line, err := formatObject(object, output.Format, output.Header)
 				if err != nil {
-					errorsChannel <- errors.Wrap(err, "error formatting object")
+					logger.Error(errors.Wrap(err, "error formatting object"))
 					break
 				}
-				//fmt.Fprintf(os.Stderr, line)
-				messages <- line
+				fmt.Fprintln(os.Stderr, line)
 			}
-			close(messages)
 			wg.Done()
 		}()
 		return nil
 	}
 
+	if output.BufferMemory {
+		return handleOutputWithMemoryBuffer(output, outputVars, objects, fileDescriptorLimit, wg, s3Client, logger, verbose)
+	}
+
 	n, err := dfl.ParseCompile(output.Uri)
 	if err != nil {
-		return errors.Wrap(err, "Error parsing dfl node.")
+		return errors.Wrap(err, "error parsing output uri: "+output.Uri)
 	}
 	outputNode := n
 
@@ -243,19 +477,10 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 		Line string
 	}, 1000)
 
-	outputPathBuffers := map[string]struct {
-		Writer grw.ByteWriteCloser
-		Buffer *bytes.Buffer
-	}{}
 	outputPathSemaphores := map[string]chan struct{}{}
 	outputFileDescriptorSemaphore := make(chan struct{}, fileDescriptorLimit)
 
-	if verbose {
-		fmt.Println("* created semaphores using file descriptor limit " + fmt.Sprint(fileDescriptorLimit))
-	}
-
 	var outputPathMutex = &sync.Mutex{}
-	var outputBufferMutex = &sync.Mutex{}
 	getOutputPathSemaphore := func(outputPathString string) chan struct{} {
 		outputPathMutex.Lock()
 		if _, ok := outputPathSemaphores[outputPathString]; !ok {
@@ -265,24 +490,8 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 		return outputPathSemaphores[outputPathString]
 	}
 
-	writeToOutputMemoryBuffer := func(outputPathString string, line string) {
-		outputBufferMutex.Lock()
-		if _, ok := outputPathBuffers[outputPathString]; !ok {
-			//outputWriter, outputBuffer, err := grw.WriteSnappyBytes(output.Compression)
-			outputWriter, outputBuffer, err := grw.WriteBytes(output.Compression)
-			if err != nil {
-				panic(err)
-			}
-			outputPathBuffers[outputPathString] = struct {
-				Writer grw.ByteWriteCloser
-				Buffer *bytes.Buffer
-			}{Writer: outputWriter, Buffer: outputBuffer}
-		}
-		_, err := outputPathBuffers[outputPathString].Writer.WriteLine(line)
-		if err != nil {
-			panic(err)
-		}
-		outputBufferMutex.Unlock()
+	if verbose {
+		logger.Debug("created semaphores using file descriptor limit " + fmt.Sprint(fileDescriptorLimit))
 	}
 
 	go func() {
@@ -300,34 +509,28 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 				outputFileDescriptorSemaphore <- struct{}{}
 				outputPathSemaphore <- struct{}{}
 
-				if output.BufferMemory {
-					writeToOutputMemoryBuffer(line.Path, line.Line)
-				} else {
-					if output.Mkdirs {
-						err := os.MkdirAll(filepath.Dir(line.Path), 0750)
-						if err != nil {
-							errorsChannel <- errors.Wrap(err, "error creating parent directories for "+line.Path)
-							return
-						}
-					}
-
-					outputWriter, err := grw.WriteToResource(line.Path, output.Compression, true, s3_client)
+				if output.Mkdirs {
+					err := os.MkdirAll(filepath.Dir(line.Path), 0750)
 					if err != nil {
-						<-outputPathSemaphore
-						<-outputFileDescriptorSemaphore
-						errorsChannel <- errors.Wrap(err, "error opening file at path "+line.Path)
-						return
+						logger.Fatal(errors.Wrap(err, "error creating parent directories for "+line.Path))
 					}
+				}
 
-					_, err = outputWriter.WriteLine(line.Line)
-					if err != nil {
-						errorsChannel <- errors.Wrap(err, "Error writing string to output file")
-					}
+				outputWriter, err := grw.WriteToResource(line.Path, output.Compression, true, s3Client)
+				if err != nil {
+					<-outputPathSemaphore
+					<-outputFileDescriptorSemaphore
+					logger.Fatal(errors.Wrap(err, "error opening file at path "+line.Path))
+				}
 
-					err = outputWriter.Close()
-					if err != nil {
-						errorsChannel <- errors.Wrap(err, "Error closing output file.")
-					}
+				_, err = outputWriter.WriteLine(line.Line)
+				if err != nil {
+					logger.Fatal(errors.Wrap(err, "Error writing string to output file"))
+				}
+
+				err = outputWriter.Close()
+				if err != nil {
+					logger.Fatal(errors.Wrap(err, "Error closing output file."))
 				}
 
 				<-outputPathSemaphore
@@ -335,78 +538,41 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 
 			}(&wgLines, line)
 		}
-		messages <- "* waiting for wgLines to be done"
-		wgLines.Wait()
-		messages <- "* closing output path semaphores"
-		for _, outputPathSemaphore := range outputPathSemaphores {
-			close(outputPathSemaphore)
-		}
-		messages <- "* writing buffers to files"
-		for outputPath, outputBuffer := range outputPathBuffers {
-			err := outputBuffer.Writer.Close()
-			if err != nil {
-				messages <- "* error closing output buffer for " + outputPath
-			}
-			if output.Mkdirs {
-				err := os.MkdirAll(filepath.Dir(outputPath), 0750)
-				if err != nil {
-					messages <- "* error creating parent directories for file at " + outputPath
-				}
-			}
-			outputWriter, err := grw.WriteToResource(outputPath, "", output.Append, s3_client)
-			if err != nil {
-				messages <- "* error opening output file at " + outputPath
-			}
-			//_, err = ioutil.Copy(outputWriter, snappy.NewReader(bytes.NewReader(outputBuffer.Buffer.Bytes())))
-			//_, err = outputWriter.Write(outputBuffer.Buffer.Bytes())
-			_, err = io.Copy(outputWriter, outputBuffer.Buffer)
-			if err != nil {
-				messages <- "* error writing buffer to output file at " + outputPath
-			}
-			err = outputWriter.Close()
-			if err != nil {
-				messages <- "* error closing output file at " + outputPath
-			}
-			// delete output buffer and writer, since done writing to file
-			delete(outputPathBuffers, outputPath)
-		}
-		messages <- "* closing file descriptor semaphore"
+		logger.Info("* closing file descriptor semaphore")
 		close(outputFileDescriptorSemaphore)
-		messages <- "* closing messages"
-		close(messages)
-		wg.Done()
+		logger.Info("* waiting for wgLines to be done")
+		wgLines.Wait()
 	}()
 
 	if verbose {
-		fmt.Println("* starting to process objects")
+		logger.Debug("starting to process objects")
+		logger.Flush()
 	}
 
 	go func() {
 		for object := range objects {
 			outputPath, err := processObject(object, outputNode, outputVars)
 			if err != nil {
-				errorsChannel <- errors.Wrap(err, "Error writing string to output file")
+				logger.Error(errors.Wrap(err, "Error writing string to output file"))
 				break
 			}
 
 			if reflect.TypeOf(outputPath).Kind() != reflect.String {
-				errorsChannel <- errors.Wrap(err, "output path is not a string")
+				logger.Error(errors.Wrap(err, "output path is not a string"))
 				break
 			}
 
 			outputPathString, err := homedir.Expand(outputPath.(string))
 			if err != nil {
-				errorsChannel <- errors.Wrap(err, "output path cannot be expanded")
+				logger.Error(errors.Wrap(err, "output path cannot be expanded"))
 				break
 			}
 
 			line, err := formatObject(object, output.Format, output.Header)
 			if err != nil {
-				errorsChannel <- errors.Wrap(err, "error formatting object")
+				logger.Error(errors.Wrap(err, "error formatting object"))
 				break
 			}
-
-			getOutputPathSemaphore(outputPathString)
 
 			outputLines <- struct {
 				Path string
@@ -414,7 +580,7 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 			}{Path: outputPathString, Line: line}
 
 		}
-		messages <- "* closing output lines"
+		logger.Info("closing output lines")
 		close(outputLines)
 	}()
 
@@ -527,6 +693,436 @@ func processAthenaInput(inputUri string, inputLimit int, tempUri string, outputF
 	return athenaIterator, nil
 }
 
+// processSinkToStream processes reads from a batch input and writes to a stream.
+func processSinkToStream(inputReader grw.ByteReadCloser, processConfig *config.Process, s3Client *s3.S3, logger *gsl.Logger) error {
+	if processConfig.Verbose {
+		logger.Info("Processing as sink to stream.")
+		logger.Flush()
+	}
+	inputBytes, err := util.DecryptReader(inputReader, processConfig.Input.Passphrase, processConfig.Input.Salt)
+	if err != nil {
+		return errors.Wrap(err, "error decoding input")
+	}
+
+	inputType, err := gss.GetType(inputBytes, processConfig.Input.Format)
+	if err != nil {
+		return errors.Wrap(err, "error getting type for input")
+	}
+
+	if !(inputType.Kind() == reflect.Array || inputType.Kind() == reflect.Slice) {
+		return errors.New("input type cannot be streamed as it is not an array or slice but " + fmt.Sprint(inputType))
+	}
+
+	inputObjects, err := gss.DeserializeBytes(&gss.DeserializeInput{
+		Bytes:      inputBytes,
+		Format:     processConfig.Input.Format,
+		Header:     processConfig.Input.Header,
+		Comment:    processConfig.Input.Comment,
+		LazyQuotes: processConfig.Input.LazyQuotes,
+		SkipLines:  processConfig.Input.SkipLines,
+		Limit:      processConfig.Input.Limit,
+		Type:       inputType,
+		Async:      false,
+		Verbose:    processConfig.Verbose,
+	})
+	if err != nil {
+		return errors.Wrap(err, "error deserializing input using format "+processConfig.Input.Format)
+	}
+
+	dflNode, err := processConfig.Dfl.Node()
+	if err != nil {
+		return errors.Wrap(err, "error parsing")
+	}
+
+	dflVars, err := processConfig.Dfl.Variables()
+	if err != nil {
+		return errors.Wrap(err, "error getting variable from process config")
+	}
+
+	var wgObjects sync.WaitGroup
+	outputObjects := make(chan interface{}, 1000)
+
+	wgObjects.Add(1)
+	handleOutput(
+		processConfig.Output,
+		dflVars,
+		outputObjects,
+		processConfig.FileDescriptorLimit,
+		&wgObjects,
+		s3Client,
+		logger,
+		processConfig.Verbose)
+
+	inputObjectsValue := reflect.ValueOf(inputObjects)
+	inputObjectsLength := inputObjectsValue.Len()
+	for i := 0; i < inputObjectsLength; i++ {
+		output, err := processObject(inputObjectsValue.Index(i).Interface(), dflNode, dflVars)
+		if err != nil {
+			return errors.Wrap(err, "error processing object")
+		}
+		switch output.(type) {
+		case dfl.Null:
+		default:
+			outputObjects <- output
+		}
+	}
+	close(outputObjects)
+	wgObjects.Wait()
+
+	if processConfig.Time {
+		logger.Info(map[string]interface{}{
+			"msg": "ended",
+		})
+	}
+	return nil // exits function
+}
+
+func processAthenaToStream(processConfig *config.Process, dflVars map[string]interface{}, dflNode dfl.Node, athenaClient *athena.Athena, s3Client *s3.S3, logger *gsl.Logger) error {
+	var wgObjects sync.WaitGroup
+	outputObjects := make(chan interface{}, 1000)
+	wgObjects.Add(1)
+
+	if processConfig.Verbose {
+		logger.Info("Processing as athena to stream.")
+		logger.Flush()
+	}
+	athenaIterator, err := processAthenaInput(
+		processConfig.Input.Uri,
+		processConfig.Input.Limit,
+		processConfig.Temp.Uri,
+		processConfig.Output.Format,
+		athenaClient,
+		logger,
+		processConfig.Verbose)
+	if err != nil {
+		return errors.Wrap(err, "error processing athena input")
+	}
+
+	handleOutput(
+		processConfig.Output,
+		dflVars,
+		outputObjects,
+		processConfig.FileDescriptorLimit,
+		&wgObjects,
+		s3Client,
+		logger,
+		processConfig.Verbose)
+
+	inputCount := 0
+	for {
+
+		line, err := athenaIterator.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				return errors.Wrap(err, "error from athena iterator")
+			}
+		}
+
+		//messages <- "processing line: " + string(line)
+
+		inputObject := map[string]interface{}{}
+		err = json.Unmarshal(line, &inputObject)
+		if err != nil {
+			return errors.Wrap(err, "error unmarshalling value from athena results: "+string(line))
+		}
+
+		outputObject, err := processObject(inputObject, dflNode, dflVars)
+		if err != nil {
+			switch err.(type) {
+			case *gss.ErrEmptyRow:
+			default:
+				return errors.Wrap(err, "error processing object")
+			}
+		} else {
+			switch outputObject.(type) {
+			case dfl.Null:
+			default:
+				outputObjects <- outputObject
+			}
+		}
+
+		inputCount += 1
+		if processConfig.Input.Limit > 0 && inputCount >= processConfig.Input.Limit {
+			break
+		}
+	}
+	logger.Info("closing outputObjects")
+	close(outputObjects)
+	logger.Info("waiting for wgObjects")
+	wgObjects.Wait()
+
+	if processConfig.Time {
+		logger.Info(map[string]interface{}{
+			"msg": "ended",
+		})
+	}
+	return nil
+}
+
+func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config.Process, dflVars map[string]interface{}, dflNode dfl.Node, s3Client *s3.S3, logger *gsl.Logger) error {
+	if processConfig.Verbose {
+		logger.Info("Processing as stream to stream.")
+		logger.Flush()
+	}
+
+	if len(processConfig.Input.Header) == 0 && (processConfig.Input.Format == "csv" || processConfig.Input.Format == "tsv") {
+		inputBytes, err := inputReader.ReadBytes('\n')
+		if err != nil {
+			return errors.Wrap(err, "error reading header from resource")
+		}
+		csvReader := csv.NewReader(bytes.NewReader(inputBytes))
+		if processConfig.Input.Format == "tsv" {
+			csvReader.Comma = '\t'
+		}
+		csvReader.LazyQuotes = processConfig.Input.LazyQuotes
+		if len(processConfig.Input.Comment) > 1 {
+			return errors.Wrap(&gss.ErrInvalidComment{Value: processConfig.Input.Comment}, "the standard go csv package only support single character comments")
+		} else if len(processConfig.Input.Comment) == 1 {
+			csvReader.Comment = []rune(processConfig.Input.Comment)[0]
+		}
+		h, err := csvReader.Read()
+		if err != nil {
+			if err != io.EOF {
+				return errors.Wrap(err, "Error reading header from input with format csv")
+			}
+		}
+		processConfig.Input.Header = h
+	}
+
+	outputObjects := make(chan interface{}, 1000)
+
+	var wgObjects sync.WaitGroup
+	wgObjects.Add(1)
+
+	handleOutput(
+		processConfig.Output,
+		dflVars,
+		outputObjects,
+		processConfig.FileDescriptorLimit,
+		&wgObjects,
+		s3Client,
+		logger,
+		processConfig.Verbose)
+
+	inputLines := make(chan []byte, 1000)
+
+	switch processConfig.Input.Format {
+	case "jsonl":
+		go handleInputFromJSONL(
+			inputLines,
+			processConfig.Input,
+			dflNode,
+			dflVars,
+			outputObjects,
+			logger,
+			processConfig.Verbose)
+	case "csv", "tsv":
+		go handleInputFromSV(
+			inputLines,
+			processConfig.Input,
+			dflNode,
+			dflVars,
+			outputObjects,
+			logger,
+			processConfig.Verbose)
+	default:
+		return errors.New("Invalid format for stream processing")
+	}
+
+	inputCount := 0
+	for {
+		inputBytes, err := inputReader.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				return errors.New("error reading line from resource")
+			}
+		}
+		inputLines <- inputBytes
+		inputCount += 1
+		logger.Debug(fmt.Sprintf("Lines Read: %d", inputCount))
+		logger.Flush()
+		if processConfig.Input.Limit > 0 && inputCount >= processConfig.Input.Limit {
+			break
+		}
+	}
+	err := inputReader.Close()
+	if err != nil {
+		return errors.Wrap(err, "error closing input")
+	}
+	close(inputLines)
+	logger.Debug("Input closed.  Waiting for objects to be processed.")
+	logger.Flush()
+	wgObjects.Wait()
+
+	if processConfig.Time {
+		logger.Info(map[string]interface{}{
+			"msg": "ended",
+		})
+	}
+
+	return nil
+}
+
+func processAsStream(inputReader grw.ByteReadCloser, processConfig *config.Process, athenaClient *athena.Athena, s3Client *s3.S3, logger *gsl.Logger) error {
+
+	if processConfig.Verbose {
+		logger.Info("Processing as stream.")
+		logger.Flush()
+	}
+
+	if !(processConfig.Output.CanStream()) {
+		return errors.New("output format " + processConfig.Output.Format + " is not compatible with streaming")
+	}
+
+	if processConfig.Output.IsEncrypted() {
+		return errors.New("output passphrase is not compatible with streaming because it uses a block cipher")
+	}
+
+	// Stream Processing with Batch Input
+	if processConfig.Input.IsEncrypted() || !(processConfig.Input.CanStream()) {
+		return processSinkToStream(inputReader, processConfig, s3Client, logger)
+	}
+
+	//dflNode, err := util.ParseDfl(dflUri, dflExpression)
+	dflNode, err := processConfig.Dfl.Node()
+	if err != nil {
+		logger.Fatal(errors.Wrap(err, "error parsing"))
+	}
+
+	dflVars, err := processConfig.Dfl.Variables()
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	if processConfig.Input.IsAthenaStoredQuery() {
+		return processAthenaToStream(processConfig, dflVars, dflNode, athenaClient, s3Client, logger)
+	}
+
+	return processStreamToStream(inputReader, processConfig, dflVars, dflNode, s3Client, logger)
+}
+
+func processAsBatch(inputReader grw.ByteReadCloser, processConfig *config.Process, athenaClient *athena.Athena, s3Client *s3.S3, logger *gsl.Logger) error {
+
+	if processConfig.Verbose {
+		logger.Info("Processing as stream.")
+		logger.Flush()
+	}
+
+	outputString := ""
+	if processConfig.Input.IsAthenaStoredQuery() {
+		athenaIterator, err := processAthenaInput(
+			processConfig.Input.Uri,
+			processConfig.Input.Limit,
+			processConfig.Temp.Uri,
+			processConfig.Output.Format,
+			athenaClient,
+			logger,
+			processConfig.Verbose)
+		if err != nil {
+			return errors.Wrap(err, "error processing athena input")
+		}
+
+		outputObjects := make([]map[string]interface{}, 0)
+		for {
+			line, err := athenaIterator.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				} else {
+					return errors.Wrap(err, "error from athena iterator")
+				}
+			}
+			object := map[string]interface{}{}
+			err = json.Unmarshal(line, &object)
+			if err != nil {
+				return errors.Wrap(err, "error unmarshalling value from athena results: "+string(line))
+			}
+			outputObjects = append(outputObjects, object)
+		}
+
+		if len(processConfig.Output.Format) == 0 {
+			return nil // just exit if no output-format is given
+		}
+
+		str, err := gss.SerializeString(&gss.SerializeInput{
+			Object: outputObjects,
+			Format: processConfig.Output.Format,
+			Header: processConfig.Output.Header,
+			Limit:  processConfig.Output.Limit,
+			Pretty: processConfig.Output.Pretty,
+		})
+		if err != nil {
+			return errors.Wrap(err, "error converting output")
+		}
+
+		outputString = str
+
+	} else {
+
+		dflVars, err := processConfig.Dfl.Variables()
+		if err != nil {
+			return errors.Wrap(err, "error getting dfl variables")
+		}
+
+		inputBytes, err := util.DecryptReader(inputReader, processConfig.Input.Passphrase, processConfig.Input.Salt)
+		if err != nil {
+			return errors.Wrap(err, "error decrypting input")
+		}
+
+		if len(processConfig.Output.Format) > 0 {
+
+			dflNode, err := processConfig.Dfl.Node()
+			if err != nil {
+				return errors.Wrap(err, "error parsing")
+			}
+
+			inputType, err := gss.GetType(inputBytes, processConfig.Input.Format)
+			if err != nil {
+				return errors.Wrap(err, "error getting type for input")
+			}
+
+			options := processConfig.Input.Options()
+			options.Type = inputType
+			inputObject, err := options.DeserializeBytes(inputBytes, processConfig.Verbose)
+			if err != nil {
+				return errors.Wrap(err, "error deserializing input using format "+processConfig.Input.Format)
+			}
+
+			var outputObject interface{}
+			if dflNode != nil {
+				_, filterObject, err := dflNode.Evaluate(dflVars, inputObject, dfl.DefaultFunctionMap, []string{"'", "\"", "`"})
+				if err != nil {
+					return errors.Wrap(err, "error evaluating filter")
+				}
+				outputObject = filterObject
+			} else {
+				outputObject = inputObject
+			}
+
+			str, err := processConfig.OutputOptions().SerializeString(gss.StringifyMapKeys(outputObject))
+			if err != nil {
+				return errors.Wrap(err, "error converting output")
+			}
+
+			outputString = str
+
+		} else {
+			outputString = string(inputBytes)
+		}
+	}
+
+	err := processOutput(outputString, processConfig.Output, s3Client)
+	if err != nil {
+		return errors.Wrap(err, "error processing output")
+	}
+
+	return nil
+}
+
 func processFunction(cmd *cobra.Command, args []string) {
 
 	v := processViper
@@ -541,66 +1137,20 @@ func processFunction(cmd *cobra.Command, args []string) {
 	util.MergeConfigs(v, v.GetStringArray("config-uri"))
 
 	verbose := v.GetBool("verbose")
-	printTiming := v.GetBool("time")
 
 	if verbose {
-		fmt.Println("=================================================")
-		fmt.Println("Viper:")
-		fmt.Println("-------------------------------------------------")
-		str, err := gss.SerializeString(&gss.SerializeInput{
-			Object: v.AllSettings(),
-			Format: "properties",
-			Header: gss.NoHeader,
-			Limit:  gss.NoLimit,
-			Pretty: false,
-		})
-		if err != nil {
-			fmt.Println("error getting all settings")
-			os.Exit(1)
-		}
-		fmt.Println(str)
-		fmt.Println("=================================================")
+		printViperSettings(v)
 	}
 
-	fileDescriptorLimit := v.GetInt("file-descriptor-limit")
-	stream := v.GetBool("stream")
-
-	processConfig := &config.Process{
-		AWS:              &config.AWS{},
-		Input:            &config.Input{},
-		Output:           &config.Output{},
-		Temp:             &config.Temp{},
-		Dfl:              &config.Dfl{},
-		InfoDestination:  "",
-		InfoCompression:  "",
-		InfoFormat:       "",
-		ErrorDestination: "",
-		ErrorCompression: "",
-		ErrorFormat:      "",
-	}
+	processConfig := config.NewProcessConfig()
 	config.LoadConfigFromViper(processConfig, v)
 
 	if verbose {
-		fmt.Println("=================================================")
-		fmt.Println("Configuration:")
-		fmt.Println("-------------------------------------------------")
-		str, err := gss.SerializeString(&gss.SerializeInput{
-			Object: processConfig.Map(),
-			Format: "yaml",
-			Header: gss.NoHeader,
-			Limit:  gss.NoLimit,
-			Pretty: false,
-		})
-		if err != nil {
-			fmt.Println("error getting all settings")
-			os.Exit(1)
-		}
-		fmt.Println(str)
-		fmt.Println("=================================================")
+		printConfig(processConfig)
 	}
 
 	var athenaClient *athena.Athena
-	var s3_client *s3.S3
+	var s3Client *s3.S3
 
 	if processConfig.HasAWSResource() {
 		awsSession, err := session.NewSessionWithOptions(processConfig.AWSSessionOptions())
@@ -614,49 +1164,39 @@ func processFunction(cmd *cobra.Command, args []string) {
 		}
 
 		if processConfig.HasS3Bucket() {
-			s3_client = s3.New(awsSession)
+			s3Client = s3.New(awsSession)
 		}
 	}
 
-	errorWriter, err := grw.WriteToResource(processConfig.ErrorDestination, processConfig.ErrorCompression, true, s3_client)
-	if err != nil {
-		fmt.Println(errors.Wrap(err, "error creating error writer"))
-		os.Exit(1)
-	}
-
-	infoWriter, err := grw.WriteToResource(processConfig.InfoDestination, processConfig.InfoCompression, true, s3_client)
-	if err != nil {
-		errorWriter.WriteError(errors.Wrap(err, "error creating log writer")) // #nosec
-		errorWriter.Close()                                                   // #nosec
-		os.Exit(1)
-	}
-
-	logger := gsl.NewLogger(
-		map[string]int{"info": 0, "error": 1},
-		[]grw.ByteWriteCloser{infoWriter, errorWriter},
-		[]string{processConfig.InfoFormat, processConfig.ErrorFormat},
-	)
-
-	errorsChannel := make(chan interface{}, 1000)
-	messages := make(chan interface{}, 1000)
-	logger.ListenInfo(messages, nil)
-
-	if processConfig.ErrorDestination == processConfig.InfoDestination {
-		go func(errorsChannel chan interface{}) {
-			for err := range errorsChannel {
-				messages <- err
-			}
-		}(errorsChannel)
-	} else {
-		logger.ListenError(errorsChannel, nil)
-	}
+	logger := gsl.CreateApplicationLogger(&gsl.CreateApplicationLoggerInput{
+		ErrorDestination: processConfig.ErrorDestination,
+		ErrorCompression: processConfig.ErrorCompression,
+		ErrorFormat:      processConfig.ErrorFormat,
+		InfoDestination:  processConfig.InfoDestination,
+		InfoCompression:  processConfig.InfoCompression,
+		InfoFormat:       processConfig.InfoFormat,
+		Verbose:          processConfig.Verbose,
+	})
 
 	start := time.Now()
-	if printTiming {
-		messages <- map[string]interface{}{
+	if processConfig.Time {
+		logger.Info(map[string]interface{}{
 			"msg": "started",
 			"ts":  start.Format(time.RFC3339),
-		}
+		})
+	}
+
+	if processConfig.Timeout.Seconds() > 0 {
+		deadline := time.Now().Add(processConfig.Timeout)
+		logger.Info(fmt.Sprintf("Deadline: %v", deadline))
+		go func() {
+			for {
+				if time.Now().After(deadline) {
+					logger.FatalF("program exceeded timeout %v", processConfig.Timeout)
+				}
+				time.Sleep(15 * time.Second)
+			}
+		}()
 	}
 
 	processConfig.Input.Init()
@@ -668,7 +1208,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 			processConfig.Input.Compression,
 			processConfig.Input.ReaderBufferSize,
 			false,
-			s3_client)
+			s3Client)
 		if err != nil {
 			logger.Fatal(errors.Wrap(err, "error opening resource from uri "+processConfig.Input.Uri))
 		}
@@ -702,398 +1242,19 @@ func processFunction(cmd *cobra.Command, args []string) {
 	//fmt.Println("Output Format:", outputFormat)
 	//fmt.Println("Output Compression:", outputCompression)
 
-	if stream {
-
-		if !(processConfig.Output.CanStream()) {
-			logger.Fatal("output format " + processConfig.Output.Format + " is not compatible with streaming")
-		}
-
-		if processConfig.Output.IsEncrypted() {
-			logger.Fatal("output passphrase is not compatible with streaming because it uses a block cipher")
-		}
-
-		// Stream Processing with Batch Input
-		if processConfig.Input.IsEncrypted() || !(processConfig.Input.CanStream()) {
-
-			inputBytes, err := util.DecryptReader(inputReader, processConfig.Input.Passphrase, processConfig.Input.Salt)
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error decoding input"))
-			}
-
-			inputType, err := gss.GetType(inputBytes, processConfig.Input.Format)
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error getting type for input"))
-			}
-
-			if !(inputType.Kind() == reflect.Array || inputType.Kind() == reflect.Slice) {
-				logger.Fatal("input type cannot be streamed as it is not an array or slice but " + fmt.Sprint(inputType))
-			}
-
-			options := processConfig.InputOptions()
-			options.Type = inputType
-			inputObjects, err := options.DeserializeBytes(inputBytes, verbose)
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error deserializing input using format "+processConfig.Input.Format))
-			}
-
-			dflNode, err := processConfig.Dfl.Node()
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error parsing"))
-			}
-
-			dflVars, err := processConfig.Dfl.Variables()
-			if err != nil {
-				logger.Fatal(err)
-			}
-
-			var wgObjects sync.WaitGroup
-			var wgMessages sync.WaitGroup
-			fatals := make(chan interface{}, 1000)
-			outputObjects := make(chan interface{}, 1000)
-			//messages := make(chan interface, 1000)
-
-			wgObjects.Add(1)
-			wgMessages.Add(1)
-			logger.ListenFatal(fatals)
-			logger.ListenInfo(messages, &wgMessages)
-			handleOutput(
-				processConfig.Output,
-				dflVars,
-				outputObjects,
-				fatals,
-				messages,
-				fileDescriptorLimit,
-				&wgObjects,
-				s3_client,
-				verbose)
-
-			inputObjectsValue := reflect.ValueOf(inputObjects)
-			inputObjectsLength := inputObjectsValue.Len()
-			for i := 0; i < inputObjectsLength; i++ {
-				output, err := processObject(inputObjectsValue.Index(i).Interface(), dflNode, dflVars)
-				if err != nil {
-					logger.Fatal(errors.Wrap(err, "error processing object"))
-				}
-				switch output.(type) {
-				case dfl.Null:
-				default:
-					outputObjects <- output
-				}
-			}
-			close(outputObjects)
-			wgObjects.Wait()
-			wgMessages.Wait()
-
-			if printTiming {
-				messages <- map[string]interface{}{
-					"msg": "ended",
-				}
-			}
-
-			logger.Close()
-
-			return // exits function
-		}
-
-		//dflNode, err := util.ParseDfl(dflUri, dflExpression)
-		dflNode, err := processConfig.Dfl.Node()
-		if err != nil {
-			logger.Fatal(errors.Wrap(err, "error parsing"))
-		}
-
-		dflVars, err := processConfig.Dfl.Variables()
+	if processConfig.Stream {
+		err := processAsStream(inputReader, processConfig, athenaClient, s3Client, logger)
 		if err != nil {
 			logger.Fatal(err)
 		}
-
-		var wgObjects sync.WaitGroup
-		var wgMessages sync.WaitGroup
-		errorsChannel := make(chan interface{}, 1000)
-		messages := make(chan interface{}, 1000)
-		outputObjects := make(chan interface{}, 1000)
-
-		wgObjects.Add(1)
-		wgMessages.Add(1)
-		logger.ListenFatal(errorsChannel)
-		logger.ListenInfo(messages, &wgMessages)
-
-		if processConfig.Input.IsAthenaStoredQuery() {
-
-			athenaIterator, err := processAthenaInput(
-				processConfig.Input.Uri,
-				processConfig.Input.Limit,
-				processConfig.Temp.Uri,
-				processConfig.Output.Format,
-				athenaClient,
-				logger,
-				verbose)
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error processing athena input"))
-			}
-
-			handleOutput(
-				processConfig.Output,
-				dflVars,
-				outputObjects,
-				errorsChannel,
-				messages,
-				fileDescriptorLimit,
-				&wgObjects,
-				s3_client,
-				verbose)
-
-			inputCount := 0
-			for {
-
-				line, err := athenaIterator.Next()
-				if err != nil {
-					if err == io.EOF {
-						break
-					} else {
-						logger.Fatal(errors.Wrap(err, "error from athena iterator"))
-					}
-				}
-
-				//messages <- "processing line: " + string(line)
-
-				inputObject := map[string]interface{}{}
-				err = json.Unmarshal(line, &inputObject)
-				if err != nil {
-					logger.Fatal(errors.Wrap(err, "error unmarshalling value from athena results: "+string(line)))
-				}
-
-				outputObject, err := processObject(inputObject, dflNode, dflVars)
-				if err != nil {
-					switch err.(type) {
-					case *gss.ErrEmptyRow:
-					default:
-						logger.Fatal(errors.Wrap(err, "error processing object"))
-					}
-				} else {
-					switch outputObject.(type) {
-					case dfl.Null:
-					default:
-						outputObjects <- outputObject
-					}
-				}
-
-				inputCount += 1
-				if processConfig.Input.Limit > 0 && inputCount >= processConfig.Input.Limit {
-					break
-				}
-			}
-			messages <- "closing outputObjects"
-			close(outputObjects)
-			messages <- "waiting for wgObjects"
-			wgObjects.Wait()
-			messages <- "waiting for wgMessages"
-			wgMessages.Wait()
-
-			if printTiming {
-				messages <- map[string]interface{}{
-					"msg": "ended",
-				}
-			}
-
-			logger.Close()
-
-			return // exits function
-
-		}
-
-		if len(processConfig.Input.Header) == 0 && (processConfig.Input.Format == "csv" || processConfig.Input.Format == "tsv") {
-			inputBytes, err := inputReader.ReadBytes('\n')
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error reading header from resource"))
-			}
-			csvReader := csv.NewReader(bytes.NewReader(inputBytes))
-			if processConfig.Input.Format == "tsv" {
-				csvReader.Comma = '\t'
-			}
-			csvReader.LazyQuotes = processConfig.Input.LazyQuotes
-			if len(processConfig.Input.Comment) > 1 {
-				logger.Fatal("go's encoding/csv package only supports single character comment characters")
-			} else if len(processConfig.Input.Comment) == 1 {
-				csvReader.Comment = []rune(processConfig.Input.Comment)[0]
-			}
-			h, err := csvReader.Read()
-			if err != nil {
-				if err != io.EOF {
-					logger.Fatal(errors.Wrap(err, "Error reading header from input with format csv"))
-				}
-			}
-			processConfig.Input.Header = h
-		}
-
-		inputLines := make(chan []byte, 1000)
-
-		handleInput(
-			inputLines,
-			processConfig.Input,
-			dflNode,
-			dflVars,
-			outputObjects,
-			errorsChannel,
-			verbose)
-
-		handleOutput(
-			processConfig.Output,
-			dflVars,
-			outputObjects,
-			errorsChannel,
-			messages,
-			fileDescriptorLimit,
-			&wgObjects,
-			s3_client,
-			verbose)
-
-		inputCount := 0
-		for {
-			inputBytes, err := inputReader.ReadBytes('\n')
-			if err != nil {
-				if err == io.EOF {
-					break
-				} else {
-					logger.Fatal("error reading line from resource")
-				}
-			}
-			inputLines <- inputBytes
-			inputCount += 1
-			if processConfig.Input.Limit > 0 && inputCount >= processConfig.Input.Limit {
-				break
-			}
-		}
-		err = inputReader.Close()
-		if err != nil {
-			errorsChannel <- errors.Wrap(err, "error closing input")
-		}
-		close(inputLines)
-		wgObjects.Wait()
-		wgMessages.Wait()
-
-		if printTiming {
-			messages <- map[string]interface{}{
-				"msg": "ended",
-			}
-		}
-
-		logger.Close()
-
-		return // exits function
-
-	}
-
-	// Batch Processing
-
-	outputString := ""
-	if processConfig.Input.IsAthenaStoredQuery() {
-
-		athenaIterator, err := processAthenaInput(
-			processConfig.Input.Uri,
-			processConfig.Input.Limit,
-			processConfig.Temp.Uri,
-			processConfig.Output.Format,
-			athenaClient,
-			logger, verbose)
-		if err != nil {
-			logger.Fatal(errors.Wrap(err, "error processing athena input"))
-		}
-
-		outputObjects := make([]map[string]interface{}, 0)
-		for {
-			line, err := athenaIterator.Next()
-			if err != nil {
-				if err == io.EOF {
-					break
-				} else {
-					logger.Fatal(errors.Wrap(err, "error from athena iterator"))
-				}
-			}
-			object := map[string]interface{}{}
-			err = json.Unmarshal(line, &object)
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error unmarshalling value from athena results: "+string(line)))
-			}
-			outputObjects = append(outputObjects, object)
-		}
-
-		if len(processConfig.Output.Format) == 0 {
-			return // just exit if no output-format is given
-		}
-
-		str, err := gss.SerializeString(&gss.SerializeInput{
-			Object: outputObjects,
-			Format: processConfig.Output.Format,
-			Header: processConfig.Output.Header,
-			Limit:  processConfig.Output.Limit,
-			Pretty: processConfig.Output.Pretty,
-		})
-		if err != nil {
-			logger.Fatal(errors.Wrap(err, "error converting output"))
-		}
-
-		outputString = str
-
 	} else {
-
-		dflVars, err := processConfig.Dfl.Variables()
+		err := processAsBatch(inputReader, processConfig, athenaClient, s3Client, logger)
 		if err != nil {
 			logger.Fatal(err)
 		}
-
-		inputBytes, err := util.DecryptReader(inputReader, processConfig.Input.Passphrase, processConfig.Input.Salt)
-		if err != nil {
-			logger.Fatal(errors.Wrap(err, "error decrypting input"))
-		}
-
-		if len(processConfig.Output.Format) > 0 {
-
-			dflNode, err := processConfig.Dfl.Node()
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error parsing"))
-			}
-
-			inputType, err := gss.GetType(inputBytes, processConfig.Input.Format)
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error getting type for input"))
-			}
-
-			options := processConfig.Input.Options()
-			options.Type = inputType
-			inputObject, err := options.DeserializeBytes(inputBytes, verbose)
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error deserializing input using format "+processConfig.Input.Format))
-			}
-
-			var outputObject interface{}
-			if dflNode != nil {
-				_, filterObject, err := dflNode.Evaluate(dflVars, inputObject, dfl.DefaultFunctionMap, []string{"'", "\"", "`"})
-				if err != nil {
-					logger.Fatal(errors.Wrap(err, "error evaluating filter"))
-				}
-				outputObject = filterObject
-			} else {
-				outputObject = inputObject
-			}
-
-			str, err := processConfig.OutputOptions().SerializeString(gss.StringifyMapKeys(outputObject))
-			if err != nil {
-				logger.Fatal(errors.Wrap(err, "error converting output"))
-			}
-
-			outputString = str
-
-		} else {
-			outputString = string(inputBytes)
-		}
 	}
 
-	err = processOutput(outputString, processConfig.Output, s3_client)
-	if err != nil {
-		logger.Fatal(errors.Wrap(err, "error processing output"))
-	}
-
-	if printTiming {
+	if processConfig.Time {
 		end := time.Now()
 		logger.Info(map[string]interface{}{
 			"msg":      "ended",
@@ -1103,7 +1264,6 @@ func processFunction(cmd *cobra.Command, args []string) {
 	}
 
 	logger.Close()
-
 }
 
 // processCmd represents the process command
@@ -1119,6 +1279,7 @@ func init() {
 
 	processCmd.Flags().BoolP("dry-run", "", false, "parse and compile expression, but do not evaluate against context")
 	processCmd.Flags().BoolP("stream", "s", false, "stream process (context == row rather than encompassing array)")
+	processCmd.Flags().Duration("timeout", 1*time.Minute, "If not zero, then sets the timeout for the program.")
 
 	// Input Flags
 	processCmd.Flags().StringP("input-uri", "i", "stdin", "the input uri")

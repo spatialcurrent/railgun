@@ -40,25 +40,6 @@ func initViper(cmd *cobra.Command) *viper.Viper {
 	return v
 }
 
-func printConfig(v *viper.Viper) {
-	fmt.Println("=================================================")
-	fmt.Println("Configuration:")
-	fmt.Println("-------------------------------------------------")
-	str, err := gss.SerializeString(&gss.SerializeInput{
-		Object: v.AllSettings(),
-		Format: "properties",
-		Header: gss.NoHeader,
-		Limit:  gss.NoLimit,
-		Pretty: false,
-	})
-	if err != nil {
-		fmt.Println("error getting all settings")
-		os.Exit(1)
-	}
-	fmt.Println(str)
-	fmt.Println("=================================================")
-}
-
 type RequestInput struct {
 	Url           string
 	Method        string
@@ -235,7 +216,7 @@ func newPostCommand(use string, short string, long string, path string, params [
 				verbose := v.GetBool("verbose")
 
 				if verbose {
-					printConfig(v)
+					printViperSettings(v)
 				}
 
 				outputWriter, err := grw.WriteToResource("stdout", "", true, nil)
@@ -322,7 +303,7 @@ func newRestCommand(use string, short string, long string, path string, method s
 				verbose := v.GetBool("verbose")
 
 				if verbose {
-					printConfig(v)
+					printViperSettings(v)
 				}
 
 				outputWriter, err := grw.WriteToResource("stdout", "", true, nil)
@@ -408,7 +389,7 @@ func init() {
 				verbose := v.GetBool("verbose")
 
 				if verbose {
-					printConfig(v)
+					printViperSettings(v)
 				}
 
 				outputWriter, err := grw.WriteToResource("stdout", "", true, nil)

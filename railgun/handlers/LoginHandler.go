@@ -9,24 +9,13 @@ package handlers
 
 import (
 	"fmt"
-	//"io/ioutil"
 	"net/http"
-	//"reflect"
 	"strings"
-	//"sync"
 	"time"
 )
 
 import (
 	jwt "github.com/dgrijalva/jwt-go"
-	//"github.com/aws/aws-sdk-go/service/s3"
-	//jwt "github.com/dgrijalva/jwt-go"
-	//"github.com/pkg/errors"
-	//"github.com/spatialcurrent/railgun/railgun/core"
-	//rerrors "github.com/spatialcurrent/railgun/railgun/errors"
-	//"github.com/spatialcurrent/railgun/railgun/middleware"
-	//"github.com/spatialcurrent/railgun/railgun/util"
-	//"github.com/spatialcurrent/railgun/railgun/request"
 )
 
 type LoginHandler struct {
