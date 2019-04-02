@@ -180,11 +180,13 @@ func buildOptions(inputLine []byte, inputFormat string, inputHeader []string, in
 func handleInputFromSV(inputLines chan []byte, input *config.Input, node dfl.Node, vars map[string]interface{}, outputObjects chan interface{}, logger *gsl.Logger, verbose bool) {
 	inputType := reflect.TypeOf(map[string]string{})
 	for inputLine := range inputLines {
-		logger.Debug(map[string]string{
-			"msg":  "Processing line",
-			"line": string(inputLine),
-		})
-		logger.Flush()
+		/*
+			logger.Debug(map[string]string{
+				"msg":  "Processing line",
+				"line": string(inputLine),
+			})
+			logger.Flush()
+		*/
 		inputObject, err := gss.DeserializeBytes(&gss.DeserializeInput{
 			Bytes:      inputLine,
 			Format:     input.Format,
@@ -275,27 +277,28 @@ func writeBuffersToFiles(buffers map[string]struct {
 	for outputPath, outputBuffer := range buffers {
 		err := outputBuffer.Writer.Close()
 		if err != nil {
-			logger.Info("* error closing output buffer for " + outputPath)
+			logger.Error("error closing output buffer for " + outputPath)
+			logger.Flush()
 		}
 		if mkdirs {
 			err := os.MkdirAll(filepath.Dir(outputPath), 0750)
 			if err != nil {
-				logger.Info("* error creating parent directories for file at " + outputPath)
+				logger.Fatal("error creating parent directories for file at " + outputPath)
 			}
 		}
 		outputWriter, err := grw.WriteToResource(outputPath, "", append, s3Client)
 		if err != nil {
-			logger.Info("* error opening output file at " + outputPath)
+			logger.Fatal(errors.Wrap(err, "error opening output file to "+outputPath))
 		}
 		//_, err = ioutil.Copy(outputWriter, snappy.NewReader(bytes.NewReader(outputBuffer.Buffer.Bytes())))
 		//_, err = outputWriter.Write(outputBuffer.Buffer.Bytes())
 		_, err = io.Copy(outputWriter, outputBuffer.Buffer)
 		if err != nil {
-			logger.Info("* error writing buffer to output file at " + outputPath)
+			logger.Fatal(errors.Wrap(err, "error writing buffer to output file to "+outputPath))
 		}
 		err = outputWriter.Close()
 		if err != nil {
-			logger.Info("* error closing output file at " + outputPath)
+			logger.Fatal(errors.Wrap(err, "error closing output file at "+outputPath))
 		}
 		// delete output buffer and writer, since done writing to file
 		delete(buffers, outputPath)
@@ -304,18 +307,12 @@ func writeBuffersToFiles(buffers map[string]struct {
 	logger.Flush()
 }
 
-func handleOutputWithMemoryBuffer(output *config.Output, outputVars map[string]interface{}, objects chan interface{}, fileDescriptorLimit int, wg *sync.WaitGroup, s3Client *s3.S3, logger *gsl.Logger, verbose bool) error {
+func handleOutputWithMemoryBuffer(output *config.Output, outputNode dfl.Node, outputVars map[string]interface{}, objects chan interface{}, fileDescriptorLimit int, wg *sync.WaitGroup, s3Client *s3.S3, logger *gsl.Logger, verbose bool) error {
 
 	if verbose {
 		logger.Debug("handleOutputWithMemoryBuffer")
 		logger.Flush()
 	}
-
-	n, err := dfl.ParseCompile(output.Uri)
-	if err != nil {
-		return errors.Wrap(err, "error parsing output uri: "+output.Uri)
-	}
-	outputNode := n
 
 	outputLines := make(chan struct {
 		Path string
@@ -329,20 +326,27 @@ func handleOutputWithMemoryBuffer(output *config.Output, outputVars map[string]i
 	}{}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Fatal(map[string]interface{}{
+					"msg":   "Recovered from panic",
+					"value": r,
+				})
+			}
+		}()
 		for line := range outputLines {
 
-			logger.Debug(map[string]string{
-				"msg":  "Writing output line",
-				"path": line.Path,
-				"line": line.Line,
-			})
-			logger.Flush()
+			/*
+				logger.Debug(map[string]string{
+					"msg":  "Writing output line",
+					"path": line.Path,
+					"line": line.Line,
+				})
+				logger.Flush()
+			*/
 
-			outputPathBuffersMutex.RLock()
+			outputPathBuffersMutex.Lock()
 			if _, ok := outputPathBuffers[line.Path]; !ok {
-				outputPathBuffersMutex.RUnlock()
-				outputPathBuffersMutex.Lock()
-
 				//outputWriter, outputBuffer, err := grw.WriteSnappyBytes(output.Compression)
 				outputWriter, outputBuffer, err := grw.WriteBytes(output.Compression)
 				if err != nil {
@@ -359,11 +363,10 @@ func handleOutputWithMemoryBuffer(output *config.Output, outputVars map[string]i
 					"path": line.Path,
 				})
 				logger.Flush()
-
-				outputPathBuffersMutex.Unlock()
-				outputPathBuffersMutex.RLock()
 			}
+			outputPathBuffersMutex.Unlock()
 
+			outputPathBuffersMutex.RLock()
 			_, err := outputPathBuffers[line.Path].Writer.WriteLineSafe(line.Line)
 			if err != nil {
 				panic(err)
@@ -389,26 +392,39 @@ func handleOutputWithMemoryBuffer(output *config.Output, outputVars map[string]i
 
 	go func() {
 		for object := range objects {
+
+			/*
+				logger.Debug(map[string]interface{}{
+					"msg":  "Processing Object",
+					"obj": object,
+				})
+				logger.Flush()
+			*/
+
 			outputPath, err := processObject(object, outputNode, outputVars)
 			if err != nil {
 				logger.Error(errors.Wrap(err, "Error writing string to output file"))
+				logger.Flush()
 				break
 			}
 
 			if reflect.TypeOf(outputPath).Kind() != reflect.String {
 				logger.Error(errors.Wrap(err, "output path is not a string"))
+				logger.Flush()
 				break
 			}
 
 			outputPathString, err := homedir.Expand(outputPath.(string))
 			if err != nil {
 				logger.Error(errors.Wrap(err, "output path cannot be expanded"))
+				logger.Flush()
 				break
 			}
 
 			line, err := formatObject(object, output.Format, output.Header)
 			if err != nil {
 				logger.Error(errors.Wrap(err, "error formatting object"))
+				logger.Flush()
 				break
 			}
 
@@ -462,15 +478,19 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 		return nil
 	}
 
-	if output.BufferMemory {
-		return handleOutputWithMemoryBuffer(output, outputVars, objects, fileDescriptorLimit, wg, s3Client, logger, verbose)
-	}
-
 	n, err := dfl.ParseCompile(output.Uri)
 	if err != nil {
 		return errors.Wrap(err, "error parsing output uri: "+output.Uri)
 	}
 	outputNode := n
+
+	if output.BufferMemory {
+		err := handleOutputWithMemoryBuffer(output, outputNode, outputVars, objects, fileDescriptorLimit, wg, s3Client, logger, verbose)
+		if err != nil {
+			return errors.Wrap(err, "error processing output using memory buffers")
+		}
+		return nil
+	}
 
 	outputLines := make(chan struct {
 		Path string
@@ -743,7 +763,7 @@ func processSinkToStream(inputReader grw.ByteReadCloser, processConfig *config.P
 	outputObjects := make(chan interface{}, 1000)
 
 	wgObjects.Add(1)
-	handleOutput(
+	err = handleOutput(
 		processConfig.Output,
 		dflVars,
 		outputObjects,
@@ -752,6 +772,9 @@ func processSinkToStream(inputReader grw.ByteReadCloser, processConfig *config.P
 		s3Client,
 		logger,
 		processConfig.Verbose)
+	if err != nil {
+		return errors.Wrap(err, "error procssing output")
+	}
 
 	inputObjectsValue := reflect.ValueOf(inputObjects)
 	inputObjectsLength := inputObjectsValue.Len()
@@ -798,7 +821,7 @@ func processAthenaToStream(processConfig *config.Process, dflVars map[string]int
 		return errors.Wrap(err, "error processing athena input")
 	}
 
-	handleOutput(
+	err = handleOutput(
 		processConfig.Output,
 		dflVars,
 		outputObjects,
@@ -807,6 +830,9 @@ func processAthenaToStream(processConfig *config.Process, dflVars map[string]int
 		s3Client,
 		logger,
 		processConfig.Verbose)
+	if err != nil {
+		return errors.Wrap(err, "error procssing output")
+	}
 
 	inputCount := 0
 	for {
@@ -896,7 +922,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 	var wgObjects sync.WaitGroup
 	wgObjects.Add(1)
 
-	handleOutput(
+	err := handleOutput(
 		processConfig.Output,
 		dflVars,
 		outputObjects,
@@ -905,6 +931,9 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		s3Client,
 		logger,
 		processConfig.Verbose)
+	if err != nil {
+		return errors.Wrap(err, "error procssing output")
+	}
 
 	inputLines := make(chan []byte, 1000)
 
@@ -949,7 +978,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 			break
 		}
 	}
-	err := inputReader.Close()
+	err = inputReader.Close()
 	if err != nil {
 		return errors.Wrap(err, "error closing input")
 	}
