@@ -200,7 +200,7 @@ func handleInputFromSV(inputLines chan []byte, input *config.Input, node dfl.Nod
 			Verbose:    verbose,
 		})
 		if err != nil {
-			logger.Error(errors.Wrap(err, "error deserializing input"))
+			logger.Error(errors.Wrap(err, "error deserializing input from lines of bytes "+fmt.Sprint(inputLine)+""))
 			continue
 		}
 		outputObject, err := processObject(inputObject, node, vars)
@@ -378,7 +378,7 @@ func handleOutputWithMemoryBuffer(output *config.Output, outputNode dfl.Node, ou
 		logger.Flush()
 
 		if len(outputPathBuffers) > 0 {
-			logger.Info("writing buffers to files")
+			logger.Debug("writing buffers to files")
 			logger.Flush()
 			writeBuffersToFiles(outputPathBuffers, output.Mkdirs, output.Append, s3Client, logger)
 		}
@@ -434,7 +434,7 @@ func handleOutputWithMemoryBuffer(output *config.Output, outputNode dfl.Node, ou
 			}{Path: outputPathString, Line: line}
 		}
 		close(outputLines)
-		logger.Info("output lines closed")
+		logger.Debug("output lines closed")
 		logger.Flush()
 	}()
 
@@ -970,6 +970,10 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 				return errors.New("error reading line from resource")
 			}
 		}
+		// If line is a blank line then continue to next.
+		if len(inputBytes) == 0 || (len(inputBytes) == 1 && inputBytes[0] == '\n') || (len(inputBytes) == 2 && inputBytes[0] == '\r' && inputBytes[1] == '\n') {
+			continue
+		}
 		inputLines <- inputBytes
 		inputCount += 1
 		logger.Debug(fmt.Sprintf("Lines Read: %d", inputCount))
@@ -1217,7 +1221,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 
 	if processConfig.Timeout.Seconds() > 0 {
 		deadline := time.Now().Add(processConfig.Timeout)
-		logger.Info(fmt.Sprintf("Deadline: %v", deadline))
+		logger.Debug(fmt.Sprintf("Deadline: %v", deadline))
 		go func() {
 			for {
 				if time.Now().After(deadline) {
@@ -1336,11 +1340,11 @@ func init() {
 	processCmd.Flags().IntP("output-limit", "", gss.NoLimit, "maximum number of objects to send to output")
 	processCmd.Flags().BoolP("output-append", "", false, "append to output files")
 	processCmd.Flags().BoolP("output-overwrite", "", false, "overwrite output if it already exists")
-	processCmd.Flags().Bool("output-buffer-memory", false, "buffer output in memory")
+	processCmd.Flags().BoolP("output-buffer-memory", "b", false, "buffer output in memory")
 	processCmd.Flags().Bool("output-mkdirs", false, "make directories if missing for output files")
 
 	// DFL Flags
-	processCmd.Flags().StringP("dfl-expression", "", "", "DFL expression to use")
+	processCmd.Flags().StringP("dfl-expression", "d", "", "DFL expression to use")
 	processCmd.Flags().StringP("dfl-uri", "", "", "URI to DFL file to use")
 	processCmd.Flags().StringP("dfl-vars", "", "", "initial variables to use when evaluating DFL expression")
 
