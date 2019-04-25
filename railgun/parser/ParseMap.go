@@ -10,7 +10,7 @@ package parser
 import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
-	"github.com/spatialcurrent/go-simple-serializer/gss"
+	stringify "github.com/spatialcurrent/go-stringify"
 	"github.com/spatialcurrent/go-try-get/gtg"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"reflect"
@@ -30,5 +30,5 @@ func ParseMap(obj interface{}, name string) (map[string]interface{}, error) {
 			return map[string]interface{}{}, nil
 		}
 	}
-	return gss.StringifyMapKeys(m).(map[string]interface{}), err
+	return stringify.StringifyMapKeys(m).(map[string]interface{}), err
 }

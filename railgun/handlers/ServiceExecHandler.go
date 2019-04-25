@@ -30,6 +30,7 @@ import (
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	//"github.com/spatialcurrent/go-try-get/gtg"
 	"github.com/spatialcurrent/go-adaptive-functions/af"
+	stringify "github.com/spatialcurrent/go-stringify"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/middleware"
 	"github.com/spatialcurrent/railgun/railgun/request"
@@ -339,6 +340,6 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 
 	//fmt.Println("Output Object: ", outputObject)
 
-	return gss.StringifyMapKeys(outputObject), nil
+	return stringify.StringifyMapKeys(outputObject), nil
 
 }

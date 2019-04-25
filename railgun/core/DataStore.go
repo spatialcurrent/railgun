@@ -23,6 +23,7 @@ type DataStore struct {
 	Compression string                 `rest:"compression, the compression of the data (default inferred from uri)" visibility:"private"`
 	Extent      []float64              `rest:"extent, the extent of the data" visibility:"public"`
 	Vars        map[string]interface{} `rest:"vars, the values of the variables for this data store"`
+	Filter      dfl.Node               `rest:"filter, a filter to apply when querying this datastore" required:"no" visibility:"private"`
 }
 
 func (ds DataStore) GetName() string {
@@ -46,6 +47,9 @@ func (ds DataStore) Map(ctx context.Context) map[string]interface{} {
 	}
 	if len(dict) > 0 {
 		m["vars"] = dfl.Dictionary{Nodes: dict}.Dfl(dfl.DefaultQuotes, false, 0)
+	}
+	if ds.Filter != nil {
+		m["filter"] = ds.Filter.Dfl(dfl.DefaultQuotes, false, 0)
 	}
 	return m
 }

@@ -1,0 +1,16 @@
+(
+  $bbox := float64Array(split(first(lookup(@, "bbox", [""])), ","))
+) |
+(len($bbox) != 4) ? null : (
+  (
+    {
+      bbox: $bbox,
+      extent: [
+        tileX($bbox[0], $tileZ),
+        tileY($bbox[1], $tileZ),
+        tileX($bbox[2], $tileZ),
+        tileY($bbox[3], $tileZ)
+      ]
+    }
+  )
+)

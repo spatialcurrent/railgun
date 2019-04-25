@@ -29,6 +29,7 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfljs"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
 	"github.com/spatialcurrent/go-simple-serializer/gssjs"
+	stringify "github.com/spatialcurrent/go-stringify"
 	"github.com/spatialcurrent/railgun/railgun"
 )
 
@@ -229,7 +230,7 @@ func Process(in interface{}, options *js.Object) interface{} {
 		output = ctx
 	}
 
-	output = gss.StringifyMapKeys(output)
+	output = stringify.StringifyMapKeys(output)
 
 	if len(outputFormat) > 0 {
 		output_string, err := gss.SerializeString(&gss.SerializeInput{

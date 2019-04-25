@@ -26,10 +26,10 @@ import (
 	"github.com/gorilla/mux"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
-	"github.com/spatialcurrent/go-adaptive-functions/af"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	stringify "github.com/spatialcurrent/go-stringify"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/middleware"
 	"github.com/spatialcurrent/railgun/railgun/request"
@@ -46,6 +46,8 @@ func (h *ServiceDownloadHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 
 	qs := request.NewQueryString(r)
+
+	h.SendDebug("QueryString:" + fmt.Sprint(r.URL.Query()))
 
 	vars := mux.Vars(r)
 
@@ -139,23 +141,26 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 		return "", nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
 	}
 
-	bbox := make([]float64, 0)
-	if str, err := qs.FirstString("bbox"); err != nil && len(str) > 0 {
-		floats, err := af.ToFloat64Array.ValidateRun([]interface{}{strings.Split(str, ",")})
+	requestVars := map[string]interface{}{}
+	if service.Transform != nil {
+		_, newVariables, err := dfl.EvaluateMap(service.Transform, service.DataStore.Vars, r.URL.Query(), dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 		if err != nil {
-			return "", nil, errors.Wrap(err, "invalid bounding box parameter")
+			return "", nil, errors.Wrap(err, "invalid service transform")
 		}
-		bbox = floats.([]float64)
+		newVariables = stringify.StringifyMapKeys(newVariables)
+		if m, ok := newVariables.(map[string]interface{}); ok {
+			requestVars = m
+		}
 	}
 
 	variables := h.AggregateMaps(
 		h.GetServiceVariables(h.Cache, serviceName),
 		service.Defaults,
-		map[string]interface{}{
-			"bbox": bbox,
-		},
+		requestVars,
 		service.DataStore.Vars,
 	)
+
+	h.SendDebug("Variables: " + fmt.Sprint(variables))
 
 	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	if err != nil {
@@ -195,13 +200,22 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 			}
 			for _, obj := range listObjectsOutput.Contents {
 				if key := *obj.Key; strings.HasSuffix(key, inputPath[j+1:]) {
-					keys = append(keys, key)
-					lastModified[fmt.Sprintf("s3://%s/%s", bucket, key)] = *obj.LastModified
+					uri := fmt.Sprintf("s3://%s/%s", bucket, key)
+					valid := true
+					if service.DataStore.Filter != nil {
+						_, valid, err = dfl.EvaluateBool(service.DataStore.Filter, variables, map[string]interface{}{"uri": uri}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+						if err != nil {
+							return "", nil, errors.Wrap(err, "error evaluating filter on uri")
+						}
+					}
+					if valid {
+						keys = append(keys, key)
+						lastModified[uri] = *obj.LastModified
+					}
 				}
 			}
 		} else {
 			key := inputPath[i+1:]
-			keys = append(keys, key)
 			headObjectOutput, err := s3Client.HeadObject(&s3.HeadObjectInput{
 				Bucket: aws.String(bucket),
 				Key:    aws.String(key),
@@ -209,8 +223,21 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 			if err != nil {
 				return "", nil, errors.Wrap(err, "error heading S3 object")
 			}
-			lastModified[fmt.Sprintf("s3://%s/%s", bucket, key)] = *headObjectOutput.LastModified
+			uri := fmt.Sprintf("s3://%s/%s", bucket, key)
+			valid := true
+			if service.DataStore.Filter != nil {
+				_, valid, err = dfl.EvaluateBool(service.DataStore.Filter, variables, map[string]interface{}{"uri": uri}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+				if err != nil {
+					return "", nil, errors.Wrap(err, "error evaluating filter on uri")
+				}
+			}
+			if valid {
+				keys = append(keys, key)
+				lastModified[uri] = *headObjectOutput.LastModified
+			}
 		}
+
+		fmt.Println("Keys:", keys)
 
 		for _, key := range keys {
 			inputUri := fmt.Sprintf("s3://%s/%s", bucket, key)
@@ -321,6 +348,6 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 	// Set the variables to the cache every time to bump the expiration
 	h.SetServiceVariables(h.Cache, serviceName, variables)
 
-	return outputFilename, gss.StringifyMapKeys(outputObject), nil
+	return outputFilename, stringify.StringifyMapKeys(outputObject), nil
 
 }

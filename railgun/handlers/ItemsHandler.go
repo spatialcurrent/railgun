@@ -8,6 +8,11 @@
 package handlers
 
 import (
+	"net/http"
+	"strings"
+)
+
+import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	gocache "github.com/patrickmn/go-cache"
@@ -15,12 +20,11 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	stringify "github.com/spatialcurrent/go-stringify"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
 	"github.com/spatialcurrent/railgun/railgun/named"
 	"github.com/spatialcurrent/railgun/railgun/request"
 	"github.com/spatialcurrent/railgun/railgun/util"
-	"net/http"
-	"strings"
 )
 
 type ItemsHandler struct {
@@ -177,7 +181,7 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 	}
 
 	outputBytes, err := gss.SerializeBytes(&gss.SerializeInput{
-		Object: gss.StringifyMapKeys(outputObject),
+		Object: stringify.StringifyMapKeys(outputObject),
 		Format: outputFormat,
 		Header: gss.NoHeader,
 		Limit:  gss.NoLimit,

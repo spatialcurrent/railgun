@@ -156,11 +156,13 @@ func NewRailgunRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, re
 
 	}
 
-	r.AddServiceExecHandler("service_exec", "/services/{name}/exec.{ext}")
+	cache := gocache.New(5*time.Minute, 10*time.Minute)
 
-	r.AddServiceDownloadHandler("service_download", "/services/{name}/download.{ext}")
+	r.AddServiceExecHandler("service_exec", "/services/{name}/exec.{ext}", cache)
 
-	r.AddServiceTileHandler("service_tile", "/services/{name}/tiles/{z}/{x}/{y}.{ext}")
+	r.AddServiceDownloadHandler("service_download", "/services/{name}/download.{ext}", cache)
+
+	r.AddServiceTileHandler("service_tile", "/services/{name}/tiles/{z}/{x}/{y}.{ext}", cache)
 
 	r.AddJobExecHandler("job_exec", "/jobs/{name}/exec.{ext}")
 
@@ -265,24 +267,24 @@ func (r *RailgunRouter) AddHomeHandler(name string, path string) {
 	})
 }
 
-func (r *RailgunRouter) AddServiceExecHandler(name string, path string) {
+func (r *RailgunRouter) AddServiceExecHandler(name string, path string, cache *gocache.Cache) {
 	r.Methods("POST", "OPTIONS").Name(name).Path(path).Handler(&handlers.ServiceExecHandler{
 		BaseHandler: r.NewBaseHandler(),
-		Cache:       gocache.New(5*time.Minute, 10*time.Minute),
+		Cache:       cache,
 	})
 }
 
-func (r *RailgunRouter) AddServiceDownloadHandler(name string, path string) {
+func (r *RailgunRouter) AddServiceDownloadHandler(name string, path string, cache *gocache.Cache) {
 	r.Methods("GET").Name(name).Path(path).Handler(&handlers.ServiceDownloadHandler{
 		BaseHandler: r.NewBaseHandler(),
-		Cache:       gocache.New(5*time.Minute, 10*time.Minute),
+		Cache:       cache,
 	})
 }
 
-func (r *RailgunRouter) AddServiceTileHandler(name string, path string) {
+func (r *RailgunRouter) AddServiceTileHandler(name string, path string, cache *gocache.Cache) {
 	r.Methods("GET").Name(name).Path(path).Handler(&handlers.ServiceTileHandler{
 		BaseHandler: r.NewBaseHandler(),
-		Cache:       gocache.New(5*time.Minute, 10*time.Minute),
+		Cache:       cache,
 	})
 }
 

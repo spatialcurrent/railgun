@@ -109,6 +109,14 @@ func (c *RailgunCatalog) ParseDataStore(obj interface{}) (*core.DataStore, error
 	if err != nil {
 		return &core.DataStore{}, err
 	}
+	var filterNode dfl.Node
+	if filterString := gtg.TryGetString(obj, "filter", ""); len(filterString) > 0 {
+		n, err := dfl.ParseCompile(filterString)
+		if err != nil {
+			return &core.DataStore{}, errors.Wrap(err, "error parsing data store filter")
+		}
+		filterNode = n
+	}
 	ds := &core.DataStore{
 		Workspace:   workspace,
 		Name:        name,
@@ -119,6 +127,7 @@ func (c *RailgunCatalog) ParseDataStore(obj interface{}) (*core.DataStore, error
 		Compression: compression,
 		Extent:      extent,
 		Vars:        vars,
+		Filter:      filterNode,
 	}
 	return ds, nil
 }
@@ -232,6 +241,14 @@ func (c *RailgunCatalog) ParseService(obj interface{}) (*core.Service, error) {
 	if err != nil {
 		return &core.Service{}, err
 	}
+	var transformNode dfl.Node
+	if transformString := gtg.TryGetString(obj, "transform", ""); len(transformString) > 0 {
+		n, err := dfl.ParseCompile(transformString)
+		if err != nil {
+			return &core.Service{}, errors.Wrap(err, "error parsing service transform")
+		}
+		transformNode = n
+	}
 	s := &core.Service{
 		Name:        name,
 		Title:       coalesce(title, name),
@@ -240,6 +257,7 @@ func (c *RailgunCatalog) ParseService(obj interface{}) (*core.Service, error) {
 		Process:     process,
 		Defaults:    defaults,
 		Tags:        tags,
+		Transform:   transformNode,
 	}
 	return s, nil
 }

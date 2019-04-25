@@ -21,7 +21,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
-	"github.com/spatialcurrent/go-simple-serializer/gss"
+	stringify "github.com/spatialcurrent/go-stringify"
 	"github.com/spatialcurrent/go-try-get/gtg"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
@@ -281,6 +281,6 @@ func (h *LayerTileHandler) Get(w http.ResponseWriter, r *http.Request, format st
 
 	tileRequest.Features = gtg.TryGetInt(outputObject, "numberOfFeatures", 0)
 
-	return gss.StringifyMapKeys(outputObject), nil
+	return stringify.StringifyMapKeys(outputObject), nil
 
 }

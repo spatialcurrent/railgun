@@ -31,7 +31,7 @@ var gitBranch string
 var rootCmd = &cobra.Command{
 	Use:   "railgun",
 	Short: "a simple and fast data processing tool",
-	Long:  `Railgun is a simple and fast data processing tool built on go-reader, go-dfl, and go-simple-serializer.`,
+	Long:  `Railgun is a simple and fast data processing tool built on go-reader-writer, go-dfl, go-adaptive-functions, and go-simple-serializer.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	//Run: func(cmd *cobra.Command, args []string) {},
@@ -43,6 +43,27 @@ func Execute(branch string, commit string) {
 	// Set Global Variables
 	gitBranch = branch
 	gitCommit = commit
+
+	completionCommandLong := ""
+	if _, err := os.Stat("/etc/bash_completion.d/"); !os.IsNotExist(err) {
+		completionCommandLong = "To install completion scripts run:\nrailgun completion > /etc/bash_completion.d/railgun"
+	} else {
+		if _, err := os.Stat("/usr/local/etc/bash_completion.d/"); !os.IsNotExist(err) {
+			completionCommandLong = "To install completion scripts run:\nrailgun completion > /usr/local/etc/bash_completion.d/railgun"
+		} else {
+			completionCommandLong = "To install completion scripts run:\nrailgun completion > .../bash_completion.d/railgun"
+		}
+	}
+
+	completionCommand := &cobra.Command{
+		Use:   "completion",
+		Short: "Generates bash completion scripts",
+		Long:  completionCommandLong,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return rootCmd.GenBashCompletion(os.Stdout)
+		},
+	}
+	rootCmd.AddCommand(completionCommand)
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",

@@ -44,6 +44,7 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	stringify "github.com/spatialcurrent/go-stringify"
 	"github.com/spatialcurrent/go-sync-logger/gsl"
 )
 
@@ -144,7 +145,7 @@ func processObject(object interface{}, node dfl.Node, vars map[string]interface{
 		if err != nil {
 			return "", errors.Wrap(err, "error evaluating filter")
 		}
-		return gss.StringifyMapKeys(o), nil
+		return stringify.StringifyMapKeys(o), nil
 	}
 	return object, nil
 }
@@ -1136,7 +1137,7 @@ func processAsBatch(inputReader grw.ByteReadCloser, processConfig *config.Proces
 				outputObject = inputObject
 			}
 
-			str, err := processConfig.OutputOptions().SerializeString(gss.StringifyMapKeys(outputObject))
+			str, err := processConfig.OutputOptions().SerializeString(stringify.StringifyMapKeys(outputObject))
 			if err != nil {
 				return errors.Wrap(err, "error converting output")
 			}

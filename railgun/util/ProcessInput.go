@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	stringify "github.com/spatialcurrent/go-stringify"
 )
 
 func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, inputComment string, inputLazyQuotes bool, inputSkipLines int, inputLimit int, dflExpression string, dflVars map[string]interface{}, dflUri string, outputFormat string, outputHeader []string, outputLimit int, verbose bool) (string, error) {
@@ -55,7 +56,7 @@ func ProcessInput(inputBytes []byte, inputFormat string, inputHeader []string, i
 		}
 
 		outputString, err := gss.SerializeString(&gss.SerializeInput{
-			Object: gss.StringifyMapKeys(outputObject),
+			Object: stringify.StringifyMapKeys(outputObject),
 			Format: outputFormat,
 			Header: outputHeader,
 			Limit:  outputLimit,

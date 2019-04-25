@@ -80,6 +80,10 @@ func (h *BaseHandler) BuildCacheKeyServiceVariables(service string) string {
 	return fmt.Sprintf("service=%s\nvariables", service)
 }
 
+func (h *BaseHandler) BuildCacheBucketObjects(bucket string) string {
+	return fmt.Sprintf("bucket=%s\nobjects", bucket)
+}
+
 func (h *BaseHandler) GetServiceVariables(cache *gocache.Cache, service string) map[string]interface{} {
 	if cacheVariables, found := cache.Get(h.BuildCacheKeyServiceVariables(service)); found {
 		if m, ok := cacheVariables.(*map[string]interface{}); ok {

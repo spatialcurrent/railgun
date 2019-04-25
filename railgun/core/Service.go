@@ -21,6 +21,7 @@ type Service struct {
 	Process     *Process               `rest:"process, the name of the process" required:"yes"`
 	Defaults    map[string]interface{} `rest:"defaults, the default values of the variables for this service"`
 	Tags        []string               `rest:"tags, tags for the service"`
+	Transform   dfl.Node               `rest:"transform, transform applied to request variables before passing to datastore and process" required:"no" visibility:"private"`
 }
 
 func (s Service) GetName() string {
@@ -48,6 +49,9 @@ func (s Service) Map(ctx context.Context) map[string]interface{} {
 	}
 	if len(tags) > 0 {
 		m["tags"] = dfl.Array{Nodes: tags}.Dfl(dfl.DefaultQuotes, false, 0)
+	}
+	if s.Transform != nil {
+		m["transform"] = s.Transform.Dfl(dfl.DefaultQuotes, false, 0)
 	}
 	return m
 }

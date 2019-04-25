@@ -325,14 +325,15 @@ func serveFunction(cmd *cobra.Command, args []string) {
 	gracefulShutdown := v.GetBool("http-graceful-shutdown")
 	gracefulShutdownWait := v.GetDuration("http-graceful-shutdown-wait")
 
-	messages <- map[string]interface{}{"server": map[string]interface{}{
+	logger.Info(map[string]interface{}{
+		"msg":                  "configuring server",
 		"address":              address,
 		"httpTimeoutIdle":      httpTimeoutIdle,
 		"httpTimeoutRead":      httpTimeoutRead,
 		"httpTimeoutWrite":     httpTimeoutWrite,
 		"gracefulShutdown":     gracefulShutdown,
 		"gracefulShutdownWait": gracefulShutdownWait,
-	}}
+	})
 
 	if httpTimeoutIdle.Seconds() < 5.0 {
 		logger.Fatal("http-timeout-idle cannot be less than 5 seconds")
@@ -362,8 +363,9 @@ func serveFunction(cmd *cobra.Command, args []string) {
 
 	if gracefulShutdown {
 		go func() {
-			messages <- map[string]interface{}{"message": "starting server with graceful shutdown"}
-			messages <- map[string]interface{}{"message": "listening on " + srv.Addr}
+			logger.Info("starting server with graceful shutdown")
+			logger.InfoF("listening on %s", srv.Addr)
+			logger.Flush()
 			if err := srv.ListenAndServe(); err != nil {
 				fmt.Println(err)
 				os.Exit(1)
@@ -377,15 +379,17 @@ func serveFunction(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownWait)
 		defer cancel()
 		err := srv.Shutdown(ctx)
-		fmt.Println("received signal for graceful shutdown of server")
+		logger.Info("received signal for graceful shutdown of server")
+		logger.Flush()
 		if err != nil {
 			os.Exit(1)
 		}
 		os.Exit(0)
 	}
 
-	messages <- map[string]interface{}{"message": "starting server without graceful shutdown"}
-	messages <- map[string]interface{}{"message": "listening on " + srv.Addr}
+	logger.Info("starting server without graceful shutdown")
+	logger.InfoF("listening on %s", srv.Addr)
+	logger.Flush()
 	logger.Fatal(srv.ListenAndServe())
 }
 

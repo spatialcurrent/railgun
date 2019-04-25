@@ -29,6 +29,7 @@ import (
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
 	"github.com/spatialcurrent/go-simple-serializer/gss"
+	stringify "github.com/spatialcurrent/go-stringify"
 	"github.com/spatialcurrent/go-try-get/gtg"
 	"github.com/spatialcurrent/railgun/railgun/core"
 	rerrors "github.com/spatialcurrent/railgun/railgun/errors"
@@ -423,6 +424,6 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 
 	go h.SetServiceVariables(h.Cache, serviceName, variables) // save variables to cache outside of request/response thread
 
-	return gss.StringifyMapKeys(outputObject), nil
+	return stringify.StringifyMapKeys(outputObject), nil
 
 }

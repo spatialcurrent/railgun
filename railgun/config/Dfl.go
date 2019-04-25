@@ -1,11 +1,14 @@
 package config
 
 import (
+	"strings"
+)
+
+import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/dfl"
 	"github.com/spatialcurrent/go-reader-writer/grw"
-	"github.com/spatialcurrent/go-simple-serializer/gss"
-	"strings"
+	stringify "github.com/spatialcurrent/go-stringify"
 )
 
 type Dfl struct {
@@ -26,7 +29,7 @@ func (d *Dfl) Variables() (map[string]interface{}, error) {
 		if err != nil {
 			return dflVars, errors.Wrap(err, "error parsing initial dfl vars as map")
 		}
-		if m, ok := gss.StringifyMapKeys(dflVarsMap).(map[string]interface{}); ok {
+		if m, ok := stringify.StringifyMapKeys(dflVarsMap).(map[string]interface{}); ok {
 			dflVars = m
 		}
 	}
