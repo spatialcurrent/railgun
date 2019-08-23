@@ -28,7 +28,7 @@ import (
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-dfl/pkg/dfljs"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
-	"github.com/spatialcurrent/go-simple-serializer/gssjs"
+	"github.com/spatialcurrent/go-simple-serializer/pkg/gssjs"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 	"github.com/spatialcurrent/railgun/railgun"
 )
