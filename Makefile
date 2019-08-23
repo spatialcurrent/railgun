@@ -51,6 +51,9 @@ deps_gopherjs:  ## Install GopherJS with jsbuiltin
 deps_javascript:  ## Install dependencies for JavaScript tests
 	npm install .
 
+bin/chamber_linux_amd64:
+	GOOS=linux go build -o bin/chamber_linux_amd64 -ldflags "-linkmode external -extldflags -static" github.com/segmentio/chamber
+
 #
 # Go building, formatting, testing, and installing
 #
@@ -95,6 +98,9 @@ bin/railgun_linux_arm64:
 	GOOS=linux GOARCH=arm64 go build -o bin/railgun_linux_arm64 -gcflags="$(GCFLAGS)" -ldflags="$(LDFLAGS)" github.com/spatialcurrent/railgun/cmd/railgun
 
 build_cli: bin/railgun_darwin_amd64 bin/railgun_linux_amd64 bin/railgun_windows_amd64.exe bin/railgun_linux_arm64  ## Build command line programs
+
+build_cli_container:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o bin/railgun_linux_amd64 -gcflags="$(GCFLAGS)" -ldflags="$(LDFLAGS)" github.com/spatialcurrent/railgun/cmd/railgun
 
 #
 # JavaScript

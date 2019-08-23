@@ -70,7 +70,7 @@ jobs:
       - restore_cache:
           keys:
             - v1-go-src-{{ .Branch }}-{{ .Revision }}
-      - run: bash scripts/build_cli.sh
+      - run: make build_cli
       - store_artifacts:
           path: bin
           destination: /
@@ -81,10 +81,8 @@ jobs:
       - restore_cache:
           keys:
             - v1-go-src-{{ .Branch }}-{{ .Revision }}
-      - run:
-          name: Install GopherJS
-          command: go get -u github.com/gopherjs/gopherjs
-      - run: bash scripts/build_javascript.sh
+      - run: make deps_gopherjs
+      - run: make build_javascript
       - store_artifacts:
           path: bin
           destination: /
@@ -97,13 +95,8 @@ jobs:
             - v1-go-src-{{ .Branch }}-{{ .Revision }}
       - setup_remote_docker:
           docker_layer_caching: true
-      - run: GOOS=linux go build -o bin/chamber_linux_amd64 -ldflags "-linkmode external -extldflags -static" github.com/segmentio/chamber
-      - run:
-          name: Build Executable
-          command: LDFLAGS="-X main.gitBranch=$(git branch | grep \* | cut -d ' ' -f2) -X main.gitCommit=$(git rev-list -1 HEAD)" go build -a -installsuffix cgo -o bin/railgun_linux_amd64 -ldflags "$LDFLAGS" github.com/spatialcurrent/railgun/cmd/railgun
-          environment:
-            CGO_ENABLED: 0
-            GOOS: linux
+      - run: make bin/chamber_linux_amd64
+      - run: make build_cli_container
       - run: docker build -t railgun:git-${CIRCLE_SHA1} .
       - run: sudo apt-get install python-dev python-pip
       - run: pip install awscli --upgrade --user
