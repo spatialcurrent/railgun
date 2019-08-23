@@ -22,52 +22,56 @@ For an interactive demo, see the [railgun notebook](https://beta.observablehq.co
 
 **CLI**
 
-You can use the command line tool to process data.
+The command line tool, `railgun`, can be used to easily covert data between formats.  We currently support the following platforms.
 
+| GOOS | GOARCH |
+| ---- | ------ |
+| darwin | amd64 |
+| linux | amd64 |
+| windows | amd64 |
+| linux | arm64 |
+
+Pull requests to support other platforms are welcome!  See the [examples](#examples) section below for usage.
+
+**Go**
+
+You can install the railgun packages with.
+
+
+```shell
+go get -u -d github.com/spatialcurrent/railguns/...
 ```
-Usage: railgun -input_format INPUT_FORMAT -o OUTPUT_FORMAT [-input_uri INPUT_URI] [-input_compression [bzip2|gzip|snappy]] [-h HEADER] [-c COMMENT] [-object_path PATH] [-dfl_exp DFL_EXPRESSION] [-dfl_file DFL_FILE] [-output_path OUTPUT_PATH] [-max MAX_COUNT]
-Options:
-  -aws_access_key_id string
-    	Defaults to value of environment variable AWS_ACCESS_KEY_ID
-  -aws_default_region string
-    	Defaults to value of environment variable AWS_DEFAULT_REGION.
-  -aws_secret_access_key string
-    	Defaults to value of environment variable AWS_SECRET_ACCESS_KEY.
-  -aws_session_token string
-    	Defaults to value of environment variable AWS_SESSION_TOKEN.
-  -c string
-    	The input comment character, e.g., #.  Commented lines are not sent to output.
-  -dfl_exp string
-    	Process using dfl expression
-  -dfl_file string
-    	Process using dfl file.
-  -h string
-    	The input header if the stdin input has no header.
-  -hdfs_name_node string
-    	Defaults to value of environment variable HDFS_DEFAULT_NAME_NODE.
-  -help
-    	Print help.
-  -input_compression string
-    	The input compression: none, bzip2, gzip, snappy (default "none")
-  -input_format string
-    	The input format: bson, csv, tsv, hcl, hcl2, json, jsonl, properties, toml, yaml
-  -input_reader_buffer_size int
-    	The input reader buffer size (default 4096)
-  -input_uri string
-    	The input uri (default "stdin")
-  -max int
-    	The maximum number of objects to output (default -1)
-  -output_format string
-    	The output format: bson, csv, tsv, hcl, hcl2, json, jsonl, properties, toml, yaml
-  -output_uri string
-    	The output uri (default "stdout")
-  -version
-    	Prints version to stdout.
-```
+
+You can then import the main public API with `import "github.com/spatialcurrent/go-simple-serializer/pkg/railgun"` or one of the underlying packages, e.g., `import "github.com/spatialcurrent/go-simple-serializer/pkg/pipeline"`.
+
+See [railgun](https://godoc.org/github.com/spatialcurrent/railgun) in GoDoc for API documentation and examples.
 
 # Releases
 
-**Railgun** is currently in **alpha**.  See releases at https://github.com/spatialcurrent/railgun/releases.
+**railgun** is currently in **alpha**.  See releases at https://github.com/spatialcurrent/railgun/releases.  See the **Building** section below to build from scratch.
+
+**JavaScript**
+
+- `railgun.global.js`, `railgun.global.js.map` - JavaScript global build  with source map
+- `railgun.global.min.js`, `railgun.global.min.js.map` - Minified JavaScript global build with source map
+- `railgun.mod.js`, `railgun.mod.js.map` - JavaScript module build  with source map
+- `railgun.mod.min.js`, `railgun.mod.min.js.map` - Minified JavaScript module with source map
+
+**Darwin**
+
+- `railgun_darwin_amd64` - CLI for Darwin on amd64 (includes `macOS` and `iOS` platforms)
+
+**Linux**
+
+- `railgun_linux_amd64` - CLI for Linux on amd64
+- `railgun_linux_amd64` - CLI for Linux on arm64
+- `railgun_linux_amd64.h`, `railgun_linuxamd64.so` - Shared Object for Linux on amd64
+- `railgun_linux_armv7.h`, `railgun_linux_armv7.so` - Shared Object for Linux on ARMv7
+- `railgun_linux_armv8.h`, `railgun_linux_armv8.so` - Shared Object for Linux on ARMv8
+
+**Windows**
+
+- `railgun_windows_amd64.exe` - CLI for Windows on amd64
 
 # Examples
 
@@ -99,17 +103,19 @@ read -s -p 'Password: ' password && echo && railgun_linux_amd64 -input_uri secre
 
 # Building
 
+Use `make help` to see help information for each target.
+
 **CLI**
 
-The `build_cli.sh` script is used to build executables for Linux and Windows.
+The `make build_cli` script is used to build executables for Linux and Windows.
 
 **JavaScript**
 
-You can compile GSS to pure JavaScript with the `scripts/build_javascript.sh` script.
+You can compile railgun to pure JavaScript with the `make build_javascript` script.
 
 **Changing Destination**
 
-The default destination for build artifacts is `railgun/bin`, but you can change the destination with a CLI argument.  For building on a Chromebook consider saving the artifacts in `/usr/local/go/bin`, e.g., `bash scripts/build_cli.sh /usr/local/go/bin`
+The default destination for build artifacts is `railgun/bin`, but you can change the destination with an environment variable.  For building on a Chromebook consider saving the artifacts in `/usr/local/go/bin`, e.g., `DEST=/usr/local/go/bin make build_cli`
 
 # Deploying
 
