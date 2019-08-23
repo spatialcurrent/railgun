@@ -5,17 +5,19 @@
 //
 // =================================================================
 
-package main
+package railgun
 
 import (
-	"github.com/spatialcurrent/railgun/pkg/cli"
+	"regexp"
+	"strings"
+
+	"github.com/pkg/errors"
 )
 
-// GitCommit & Branch are empty unless set as a build flag
-// See https://blog.alexellis.io/inject-build-time-vars-golang/
-var gitBranch string
-var gitCommit string
-
-func main() {
-	cli.Execute(gitBranch, gitCommit)
+func Slugify(s string) string {
+	reg, err := regexp.Compile("[^a-zA-Z0-9]+")
+	if err != nil {
+		panic(errors.Wrap(err, "invalid regular expression for slugify"))
+	}
+	return reg.ReplaceAllString(strings.ToLower(s), "-")
 }

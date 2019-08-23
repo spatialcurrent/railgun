@@ -53,9 +53,10 @@ go run cmd/railgun/main.go client datastores add \
 --title Amenities \
 --description 'Amenities from OpenStreetMap' \
 --extent '[-82,36,-69,42]' \
---uri '($z == null) ? "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-*.geojsonl.gz" : ( ($z < 8) ? null : "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-" + int64(mul($x, pow(2, sub(8, $z)))) + "-" + int64(mul($y, pow(2, sub(8, $z)))) + ".geojsonl.gz")' \
+--uri '($z == null) ? "s3://" + $bucket + "/tiles/osm/pois/8/8-*.geojsonl.gz" : ( ($z < 8) ? null : "s3://spatialcurrent-data-us-west-2/tiles/osm/pois/8/8-" + int64(mul($x, pow(2, sub(8, $z)))) + "-" + int64(mul($y, pow(2, sub(8, $z)))) + ".geojsonl.gz")' \
 --format 'jsonl' \
---compression 'gzip'
+--compression 'gzip' \
+--vars '{bucket: "spatialcurrent-data-us-west-2"}'
 
 go run cmd/railgun/main.go client datastores add \
 --workspace osm \
@@ -90,7 +91,7 @@ go run cmd/railgun/main.go client layers add \
 --tags '[amenities, food, cuisine, japanese]' \
 --datastore amenities \
 --expression '((@properties?.cuisine != null) and (@properties?.cuisine iin $cuisines)) or ((@properties?.name != null) and (intersects($cuisines, set(split(lower(@properties.name),` `)))))' \
---defaults '{cuisines:{sushi, japanese}, limit: -1}'
+--defaults '{cuisines:{sushi, hibachi, ramen, japanese}, limit: -1}'
 
 go run cmd/railgun/main.go client layers add \
 --name thai_food \
@@ -280,6 +281,13 @@ go run cmd/railgun/main.go client processes add \
 --tags '[geojson]' \
 --expression 'filter(@, "((@properties?.amenity != null) and (@properties.amenity iin [waterpoint, water_point, "water point", drinkingwater, drinking_water, "drinking water", drinking])) or ((@properties?.natural != null) and (@properties.natural iin [spring])) or ((@properties?.emergency != null) and (@properties.emergency iin [watertank, water_tank, "water tank"]))", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
 
+go run cmd/railgun/main.go client processes add \
+--name groceries \
+--title Groceries \
+--description 'Filter a list of GeoJSON features by groceries' \
+--tags '[geojson]' \
+--expression '(($bbox != null) ? filter(@, "intersects(bbox([float64Array(@geometry.coordinates)]), $bbox)") : @) | filter(@, "(@properties?.shop != null) and (@properties.shop in [supermarket])", $limit) | {type:FeatureCollection, features:@, numberOfFeatures: len(@)}'
+
 go run cmd/railgun/main.go client services add \
 --name amenities_extent \
 --title 'Extent of Amenities' \
@@ -357,7 +365,7 @@ go run cmd/railgun/main.go client services add \
 --tags '[cuisine, geojson]' \
 --datastore amenities \
 --process cuisines \
---defaults '{cuisines:{sushi, japanese}, limit: -1}'
+--defaults '{cuisines:{sushi, hibachi, ramen, japanese}, limit: -1}'
 
 go run cmd/railgun/main.go client services add \
 --name medical_services_geojson \
@@ -456,7 +464,7 @@ go run cmd/railgun/main.go client services add \
 --tags '[cuisine, geojson]' \
 --datastore amenities \
 --process cuisines \
---defaults '{cuisines:{chinese}, limit: -1}'
+--defaults '{cuisines:{chinese, sichuan, hunan, shanghai}, limit: -1}'
 
 go run cmd/railgun/main.go client services add \
 --name ethiopian_food_geojson \
@@ -573,4 +581,13 @@ go run cmd/railgun/main.go client services add \
 --tags '[water, geojson]' \
 --datastore amenities \
 --process water_points \
+--defaults '{limit: -1}'
+
+go run cmd/railgun/main.go client services add \
+--name groceries_geojson \
+--title 'Groceries' \
+--description 'Find locations of groceries and supermakers.' \
+--tags '[water, geojson]' \
+--datastore amenities \
+--process groceries \
 --defaults '{limit: -1}'

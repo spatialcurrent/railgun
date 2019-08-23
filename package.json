@@ -1,0 +1,40 @@
+{
+  "name": "railgun",
+  "version": "0.0.1",
+  "description": "Simple and fast data procesing tool.",
+  "main": "dist/railgun.mod.min.js",
+  "scripts": {
+    "lint": "./node_modules/eslint/bin/eslint.js ./js",
+    "clean": "rm -fr dist/railgun.mod.min.js",
+    "build": "make dist/railgun.mod.min.js",
+    "test": "./node_modules/.bin/jest",
+    "test:clean": "npm run clean && npm run build && npm run test"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spatialcurrent/railgun.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/spatialcurrent/railgun/issues"
+  },
+  "homepage": "https://github.com/spatialcurrent/railgun#readme",
+  "devDependencies": {
+    "eslint": "^5.6.1",
+    "jest": "^23.6.0",
+    "jest-cli": "^23.6.0"
+  },
+  "dependencies": {},
+  "jest": {
+    "roots": [
+      "js"
+    ],
+    "moduleFileExtensions": [
+      "js",
+      "json"
+    ],
+    "testEnvironment": "./testEnvironment"
+  }
+}

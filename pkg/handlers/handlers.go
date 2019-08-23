@@ -5,17 +5,15 @@
 //
 // =================================================================
 
-package main
+package handlers
 
 import (
-	"github.com/spatialcurrent/railgun/pkg/cli"
+	"fmt"
+	"net/http"
 )
 
-// GitCommit & Branch are empty unless set as a build flag
-// See https://blog.alexellis.io/inject-build-time-vars-golang/
-var gitBranch string
-var gitCommit string
-
-func main() {
-	cli.Execute(gitBranch, gitCommit)
+func FormatHandlerFunc(format string, a ...interface{}) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, format, a...) // #nosec
+	}
 }

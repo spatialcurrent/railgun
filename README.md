@@ -5,6 +5,7 @@
 # Description
 
 **Railgun** is a simple and fast data processing tool.  **Railgun** uses:
+
 - [go-reader](https://github.com/spatialcurrent/go-reader) for opening and reading from URIs,
 - [go-simple-serializer](https://github.com/spatialcurrent/go-simple-serializer) (GSS) for reading/writing objects to standard formats, and
 - [go-dfl](https://github.com/spatialcurrent/go-dfl) for filtering and transforming data.
@@ -119,6 +120,16 @@ cp -R .terraform/plugins/linux_amd64/terraform-provider-aws_v1.43.2_x4 /usr/loca
 aws-vault exec default -- terraform init -plugin-dir=/usr/local/terraform
 aws-vault exec default -- terraform plan
 ```
+
+# Testing
+
+**Go**
+
+To run Go tests use `make test_go` (or `bash scripts/test.sh`), which runs unit tests, `go vet`, `go vet with shadow`, [errcheck](https://github.com/kisielk/errcheck), [ineffassign](https://github.com/gordonklaus/ineffassign), [staticcheck](https://staticcheck.io/), and [misspell](https://github.com/client9/misspell).
+
+**JavaScript**
+
+To run JavaScript tests, first install [Jest](https://jestjs.io/) using `make deps_javascript`, use [Yarn](https://yarnpkg.com/en/), or another method.  Then, build the JavaScript module with `make build_javascript`.  To run tests, use `make test_javascript`.  You can also use the scripts in the `package.json`.
 
 # Contributing
 

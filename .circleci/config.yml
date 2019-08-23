@@ -2,7 +2,7 @@ version: 2.1
 executors:
   base:
     docker:
-      - image: circleci/golang:1.12
+      - image: circleci/golang:1.12-node
     working_directory: /go/src/github.com/spatialcurrent/railgun
 jobs:
   pre_deps_golang:
