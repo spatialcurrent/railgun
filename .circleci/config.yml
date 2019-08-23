@@ -9,7 +9,7 @@ jobs:
     executor: base
     steps:
       - checkout
-      - run: go get -d ./...
+      - run: make deps_go
       - run: go get github.com/inconshreveable/mousetrap # for windows CLI builds
       - run: go get github.com/segmentio/chamber # for AWS docker containers
       - run: sudo chown -R circleci /go/src
