@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
-	"github.com/spatialcurrent/go-simple-serializer/gss"
+	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 
 	"github.com/spatialcurrent/railgun/pkg/config"
 )
