@@ -30,13 +30,11 @@ import (
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gssjs"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
-	"github.com/spatialcurrent/railgun/railgun"
 )
 
 func main() {
 
 	js.Global.Set("railgun", map[string]interface{}{
-		"version": railgun.Version,
 		"process": Process,
 		"dfl": map[string]interface{}{
 			"version":        dfl.Version,

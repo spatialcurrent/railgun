@@ -17,7 +17,6 @@ import (
 
 import (
 	"github.com/gorilla/mux"
-	//"github.com/spatialcurrent/railgun/railgun"
 	"github.com/spatialcurrent/railgun/pkg/middleware"
 	"github.com/spatialcurrent/railgun/pkg/util"
 )
