@@ -21,28 +21,28 @@ import (
 )
 
 type Input struct {
-	Uri              string        `viper:"input-uri" map:"Uri"`
-	Format           string        `viper:"input-format" map:"Format"`
-	Header           []interface{} `viper:"input-header" map:"Header"`
-	Comment          string        `viper:"input-comment" map:"Comment"`
-	LazyQuotes       bool          `viper:"input-lazy-quotes" map:"LazyQuotes"`
-	Compression      string        `viper:"input-compression" map:"Compression"`
-	ReaderBufferSize int           `viper:"input-reader-buffer-size" map:"ReaderBufferSize"`
-	Passphrase       string        `viper:"input-passphrase" map:"Passphrase"`
-	Salt             string        `viper:"input-salt" map:"Salt"`
-	SkipBlanks       bool          `viper:"input-skip-blanks" map:"SkipBlanks"`
-	SkipComments     bool          `viper:"input-skip-comments" map:"SkipComments"`
-	SkipLines        int           `viper:"input-skip-lines" map:"SkipLines"`
-	Limit            int           `viper:"input-limit" map:"Limit"`
-	KeyValueSeparator    string    `viper:"input-key-value-separator" map:"KeyValueSeparator"`
-	LineSeparator    string        `viper:"input-line-separator" map:"LineSeparator"`
-	DropCR           bool          `viper:"input-drop-cr" map:"DropCR"`
-	Trim             bool          `viper:"input-trim" map:"Trim"`
-	EscapePrefix     string        `viper:"input-escape-prefix" map:"EscapePrefix"`
-	UnescapeColon    bool          `viper:"input-unescape-colon" map:"UnescapeEqual"`
-	UnescapeSpace    bool          `viper:"input-unescape-space" map:"UnescapeSpace"`
-	UnescapeNewLine  bool          `viper:"input-unescape-new-line" map:"UnescapeNewLine"`
-	UnescapeEqual    bool          `viper:"input-unescape-equal" map:"UnescapeEqual"`
+	Uri               string        `viper:"input-uri" map:"Uri"`
+	Format            string        `viper:"input-format" map:"Format"`
+	Header            []interface{} `viper:"input-header" map:"Header"`
+	Comment           string        `viper:"input-comment" map:"Comment"`
+	LazyQuotes        bool          `viper:"input-lazy-quotes" map:"LazyQuotes"`
+	Compression       string        `viper:"input-compression" map:"Compression"`
+	ReaderBufferSize  int           `viper:"input-reader-buffer-size" map:"ReaderBufferSize"`
+	Passphrase        string        `viper:"input-passphrase" map:"Passphrase"`
+	Salt              string        `viper:"input-salt" map:"Salt"`
+	SkipBlanks        bool          `viper:"input-skip-blanks" map:"SkipBlanks"`
+	SkipComments      bool          `viper:"input-skip-comments" map:"SkipComments"`
+	SkipLines         int           `viper:"input-skip-lines" map:"SkipLines"`
+	Limit             int           `viper:"input-limit" map:"Limit"`
+	KeyValueSeparator string        `viper:"input-key-value-separator" map:"KeyValueSeparator"`
+	LineSeparator     string        `viper:"input-line-separator" map:"LineSeparator"`
+	DropCR            bool          `viper:"input-drop-cr" map:"DropCR"`
+	Trim              bool          `viper:"input-trim" map:"Trim"`
+	EscapePrefix      string        `viper:"input-escape-prefix" map:"EscapePrefix"`
+	UnescapeColon     bool          `viper:"input-unescape-colon" map:"UnescapeEqual"`
+	UnescapeSpace     bool          `viper:"input-unescape-space" map:"UnescapeSpace"`
+	UnescapeNewLine   bool          `viper:"input-unescape-new-line" map:"UnescapeNewLine"`
+	UnescapeEqual     bool          `viper:"input-unescape-equal" map:"UnescapeEqual"`
 }
 
 func (i Input) CanStream() bool {

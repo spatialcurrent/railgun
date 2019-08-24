@@ -948,19 +948,19 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 	}
 
 	it, err := iterator.NewIterator(&iterator.NewIteratorInput{
-		Reader:       inputReader,
-		Format:       processConfig.Input.Format,
-		Header:       processConfig.Input.Header,
-		SkipLines:    processConfig.Input.SkipLines,
-		SkipBlanks:   true,
-		SkipComments: true,
-		Comment:      processConfig.Input.Comment,
-		Trim:         true,
-		LazyQuotes:   processConfig.Input.LazyQuotes,
-		Limit:        processConfig.Input.Limit,
-		LineSeparator: []byte(processConfig.Input.LineSeparator)[0],
+		Reader:            inputReader,
+		Format:            processConfig.Input.Format,
+		Header:            processConfig.Input.Header,
+		SkipLines:         processConfig.Input.SkipLines,
+		SkipBlanks:        true,
+		SkipComments:      true,
+		Comment:           processConfig.Input.Comment,
+		Trim:              true,
+		LazyQuotes:        processConfig.Input.LazyQuotes,
+		Limit:             processConfig.Input.Limit,
+		LineSeparator:     []byte(processConfig.Input.LineSeparator)[0],
 		KeyValueSeparator: processConfig.Input.KeyValueSeparator,
-		DropCR: processConfig.Input.DropCR,
+		DropCR:            processConfig.Input.DropCR,
 	})
 	if err != nil {
 		if err == io.EOF {
@@ -1027,7 +1027,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		outputPathWriters := map[string]pipe.Writer{}
 		outputPathBuffers := map[string]grw.Buffer{}
 
-    p = p.Output(
+		p = p.Output(
 			pipe.NewFunctionWriter(
 				createOutputFunction(
 					outputNode,
@@ -1046,7 +1046,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		)
 
 		logger.Info(map[string]interface{}{
-			"msg": "starting pipeline",
+			"msg":      "starting pipeline",
 			"pipeline": p.Map(),
 		})
 		logger.Flush()
@@ -1057,7 +1057,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		}
 
 		logger.Info(map[string]interface{}{
-			"msg": "done running pipeline",
+			"msg":               "done running pipeline",
 			"outputPathWriters": len(outputPathWriters),
 			"outputPathBuffers": len(outputPathBuffers),
 		})

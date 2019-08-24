@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	ErrMissingLineSeparator = errors.New("line separator cannot be blank")
+	ErrMissingLineSeparator     = errors.New("line separator cannot be blank")
 	ErrMissingKeyValueSeparator = errors.New("key-value separator cannot be blank")
-	ErrMissingEscapePrefix  = errors.New("escape prefix is missing")
+	ErrMissingEscapePrefix      = errors.New("escape prefix is missing")
 )
