@@ -34,8 +34,9 @@ type Input struct {
 	SkipComments     bool          `viper:"input-skip-comments" map:"SkipComments"`
 	SkipLines        int           `viper:"input-skip-lines" map:"SkipLines"`
 	Limit            int           `viper:"input-limit" map:"Limit"`
-	DropCR           bool          `viper:"input-drop-cr" map:"DropCR"`
+	KeyValueSeparator    string    `viper:"input-key-value-separator" map:"KeyValueSeparator"`
 	LineSeparator    string        `viper:"input-line-separator" map:"LineSeparator"`
+	DropCR           bool          `viper:"input-drop-cr" map:"DropCR"`
 	Trim             bool          `viper:"input-trim" map:"Trim"`
 	EscapePrefix     string        `viper:"input-escape-prefix" map:"EscapePrefix"`
 	UnescapeColon    bool          `viper:"input-unescape-colon" map:"UnescapeEqual"`

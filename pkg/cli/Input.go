@@ -36,8 +36,9 @@ const (
 	FlagInputSkipBlanks       string = "input-skip-blanks"
 	FlagInputSkipComments     string = "input-skip-comments"
 	FlagInputSkipLines        string = "input-skip-lines"
-	FlagInputDropCR           string = "input-drop-cr"
+	FlagInputKeyValueSeparator string = "input-key-value-separator"
 	FlagInputLineSeparator    string = "input-line-separator"
+	FlagInputDropCR           string = "input-drop-cr"
 	FlagInputEscapePrefix     string = "input-escape-prefix"
 	FlagInputUnescapeColon    string = "input-unescape-colon"
 	FlagInputUnescapeEqual    string = "input-unescape-equal"
@@ -45,6 +46,9 @@ const (
 	FlagInputUnescapeNewLine  string = "input-unescape-new-line"
 
 	defaultInputFormat string = ""
+
+  DefaultInputKeyValueSeparator string = "="
+	DefaultInputLineSeparator string = "\n"
 )
 
 func CheckInput(v *viper.Viper) error {
@@ -74,7 +78,8 @@ func InitInputFlags(flag *pflag.FlagSet) {
 	flag.Int(FlagInputSkipLines, gss.NoSkip, "the number of lines to skip before processing")
 	flag.Bool(FlagInputSkipBlanks, false, "skip blank lines")
 	flag.Bool(FlagInputSkipComments, false, "skip comments")
-	flag.String(FlagInputLineSeparator, "\n", "override line separator.  Used with properties and JSONL formats.")
+	flag.String(FlagInputKeyValueSeparator, DefaultInputKeyValueSeparator, "override key-value separator")
+	flag.String(FlagInputLineSeparator, DefaultInputLineSeparator, "override line separator.  Used with properties and JSONL formats.")
 	flag.Bool(FlagInputDropCR, false, "drop carriage return characters that immediately precede new line characters")
 	flag.String(FlagInputEscapePrefix, "", "override escape prefix.  Used with properties format.")
 	flag.Bool(FlagInputUnescapeColon, false, "Unescape colon characters in input.  Used with properties format.")

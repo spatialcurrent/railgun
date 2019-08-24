@@ -114,6 +114,11 @@ func processOutput(content string, output *config.Output, s3Client *s3.S3) error
 			}
 		}
 
+		err = outputWriter.Flush()
+		if err != nil {
+			return errors.Wrap(err, "error flushing output file.")
+		}
+
 		err = outputWriter.Close()
 		if err != nil {
 			return errors.Wrap(err, "error closing output file.")
@@ -225,21 +230,26 @@ func writeBuffersToFiles(buffers map[string]struct {
 	Writer grw.ByteWriteCloser
 	Buffer grw.Buffer
 }, mkdirs bool, append bool, s3Client *s3.S3, logger *gsl.Logger) {
-	logger.Debug(map[string]interface{}{
+	logger.Info(map[string]interface{}{
 		"msg":     "Writing buffers to files",
 		"buffers": len(buffers),
 	})
 	logger.Flush()
 	for outputPath, outputBuffer := range buffers {
-		err := outputBuffer.Writer.Close()
+		err := outputBuffer.Writer.Flush()
+		if err != nil {
+			logger.Error("error flushing output buffer for " + outputPath)
+			logger.Flush()
+		}
+		err = outputBuffer.Writer.Close()
 		if err != nil {
 			logger.Error("error closing output buffer for " + outputPath)
 			logger.Flush()
 		}
 		if mkdirs {
-			err := os.MkdirAll(filepath.Dir(outputPath), 0750)
+			err := grw.Mkdirs(filepath.Dir(outputPath))
 			if err != nil {
-				logger.Fatal("error creating parent directories for file at " + outputPath)
+				logger.FatalF("error creating parent directories for file at %q", outputPath)
 			}
 		}
 		outputWriter, err := grw.WriteToResource(outputPath, "", append, s3Client)
@@ -252,9 +262,13 @@ func writeBuffersToFiles(buffers map[string]struct {
 		if err != nil {
 			logger.Fatal(errors.Wrap(err, "error writing buffer to output file to "+outputPath))
 		}
+		err = outputWriter.Flush()
+		if err != nil {
+			logger.Fatal(errors.Wrapf(err, "error flushing output file at %q", outputPath))
+		}
 		err = outputWriter.Close()
 		if err != nil {
-			logger.Fatal(errors.Wrap(err, "error closing output file at "+outputPath))
+			logger.Fatal(errors.Wrapf(err, "error closing output file at %q, ", outputPath))
 		}
 		// delete output buffer and writer, since done writing to file
 		delete(buffers, outputPath)
@@ -490,7 +504,7 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 				outputPathSemaphore <- struct{}{}
 
 				if output.Mkdirs {
-					err := os.MkdirAll(filepath.Dir(line.Path), 0750)
+					grw.Mkdirs(filepath.Dir(line.Path))
 					if err != nil {
 						logger.Fatal(errors.Wrap(err, "error creating parent directories for "+line.Path))
 					}
@@ -508,9 +522,14 @@ func handleOutput(output *config.Output, outputVars map[string]interface{}, obje
 					logger.Fatal(errors.Wrap(err, "Error writing string to output file"))
 				}
 
+				err = outputWriter.Flush()
+				if err != nil {
+					logger.Fatal(errors.Wrap(err, "error flushing output file."))
+				}
+
 				err = outputWriter.Close()
 				if err != nil {
-					logger.Fatal(errors.Wrap(err, "Error closing output file."))
+					logger.Fatal(errors.Wrap(err, "error closing output file."))
 				}
 
 				<-outputPathSemaphore
@@ -850,6 +869,70 @@ func processAthenaToStream(processConfig *config.Process, dflVars map[string]int
 	return nil
 }
 
+func createTransformFunction(dflNode dfl.Node, dflVars map[string]interface{}) func(inputObject interface{}) (interface{}, error) {
+	return func(inputObject interface{}) (interface{}, error) {
+		_, outputObject, err := dflNode.Evaluate(dflVars, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+		if err != nil {
+			return nil, errors.Wrap(err, "error evaluating filter")
+		}
+		if _, ok := outputObject.(dfl.Null); ok {
+			return nil, nil
+		}
+		return outputObject, nil
+	}
+}
+
+func createOutputFunction(outputNode dfl.Node, dflVars map[string]interface{}, outputFormat string, outputCompression string, outputHeader []interface{}, outputKeySerializer stringify.Stringer, outputValueSerializer stringify.Stringer, outputLineSeparator string, outputPathBuffersMutex *sync.RWMutex, outputPathWriters map[string]pipe.Writer, outputPathBuffers map[string]grw.Buffer) func(object interface{}) error {
+	return func(object interface{}) error {
+
+		_, outputPath, err := outputNode.Evaluate(dflVars, object, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+		if err != nil {
+			return errors.Wrap(err, "error evaluating filter")
+		}
+
+		outputPathString, ok := outputPath.(string)
+		if !ok {
+			return errors.New("output path is not a string")
+		}
+
+		outputPathBuffersMutex.Lock()
+		if _, ok := outputPathBuffers[outputPathString]; !ok {
+
+			outputWriter, outputBuffer, err := grw.WriteBytes(outputCompression)
+			if err != nil {
+				return errors.Wrapf(err, "error writing to bytes for compression %q", outputCompression)
+			}
+
+			if outputFormat == "csv" || outputFormat == "tsv" {
+				separator, err := sv.FormatToSeparator(outputFormat)
+				if err != nil {
+					return err
+				}
+				outputPathWriters[outputPathString] = sv.NewWriter(outputWriter, separator, outputHeader, outputKeySerializer, outputValueSerializer, true, false)
+			} else if outputFormat == "jsonl" {
+				outputPathWriters[outputPathString] = jsonl.NewWriter(outputWriter, outputLineSeparator, outputKeySerializer, false)
+			} else {
+				return fmt.Errorf("cannot create streaming writer for format %q", outputFormat)
+			}
+
+			outputPathBuffers[outputPathString] = outputBuffer
+		}
+		outputPathBuffersMutex.Unlock()
+
+		err = outputPathWriters[outputPathString].WriteObject(object)
+		if err != nil {
+			return errors.Wrap(err, "error writing object to buffer")
+		}
+
+		err = outputPathWriters[outputPathString].Flush()
+		if err != nil {
+			return errors.Wrap(err, "error flushing object to buffer")
+		}
+
+		return nil
+	}
+}
+
 func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config.Process, dflVars map[string]interface{}, dflNode dfl.Node, s3Client *s3.S3, logger *gsl.Logger) error {
 	if processConfig.Verbose {
 		logger.Info("Processing as stream to stream.")
@@ -859,6 +942,10 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 	p := pipe.NewBuilder().OutputLimit(processConfig.Output.Limit).Filter(func(object interface{}) (bool, error) {
 		return object != nil, nil
 	})
+
+	if len(processConfig.Input.LineSeparator) != 1 {
+		return fmt.Errorf("invalid line separator %q with length %d", processConfig.Input.LineSeparator, len(processConfig.Input.LineSeparator))
+	}
 
 	it, err := iterator.NewIterator(&iterator.NewIteratorInput{
 		Reader:       inputReader,
@@ -871,6 +958,9 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		Trim:         true,
 		LazyQuotes:   processConfig.Input.LazyQuotes,
 		Limit:        processConfig.Input.Limit,
+		LineSeparator: []byte(processConfig.Input.LineSeparator)[0],
+		KeyValueSeparator: processConfig.Input.KeyValueSeparator,
+		DropCR: processConfig.Input.DropCR,
 	})
 	if err != nil {
 		if err == io.EOF {
@@ -881,16 +971,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 	p = p.Input(it)
 
 	if dflNode != nil {
-		p = p.Transform(func(inputObject interface{}) (interface{}, error) {
-			_, outputObject, err := dflNode.Evaluate(dflVars, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-			if err != nil {
-				return nil, errors.Wrap(err, "error evaluating filter")
-			}
-			if _, ok := outputObject.(dfl.Null); ok {
-				return nil, nil
-			}
-			return outputObject, nil
-		})
+		p = p.Transform(createTransformFunction(dflNode, dflVars))
 	}
 
 	outputUri := processConfig.Output.Uri
@@ -901,6 +982,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		outputHeader = append(outputHeader, str)
 	}
 	outputAppend := processConfig.Output.Append
+	outputMkdirs := processConfig.Output.Mkdirs
 	outputKeySerializer := processConfig.Output.KeySerializer()
 	outputValueSerializer := processConfig.Output.ValueSerializer()
 
@@ -926,12 +1008,12 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 			w := sv.NewWriter(outputWriter, separator, outputHeader, outputKeySerializer, outputValueSerializer, outputSorted, outputReversed)
 			err = p.Output(w).Run()
 			if err != nil {
-				return errors.Wrap(err, "error processing interator to writer")
+				return errors.Wrap(err, "error processing iterator to writer")
 			}
 		case "jsonl":
 			err = p.Output(jsonl.NewWriter(outputWriter, outputLineSeparator, outputKeySerializer, outputPretty)).Run()
 			if err != nil {
-				return errors.Wrap(err, "error processing interator to writer")
+				return errors.Wrap(err, "error processing iterator to writer")
 			}
 		}
 	} else {
@@ -942,56 +1024,64 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		}
 
 		outputPathBuffersMutex := &sync.RWMutex{}
-		outputPathBuffers := map[string]*pipe.SliceWriter{}
+		outputPathWriters := map[string]pipe.Writer{}
+		outputPathBuffers := map[string]grw.Buffer{}
 
-		p = p.Output(pipe.NewFunctionWriter(func(object interface{}) error {
-			_, outputPath, err := outputNode.Evaluate(dflVars, object, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
-			if err != nil {
-				return errors.Wrap(err, "error evaluating filter")
-			}
+    p = p.Output(
+			pipe.NewFunctionWriter(
+				createOutputFunction(
+					outputNode,
+					dflVars,
+					outputFormat,
+					outputCompression,
+					outputHeader,
+					outputKeySerializer,
+					outputValueSerializer,
+					outputLineSeparator,
+					outputPathBuffersMutex,
+					outputPathWriters,
+					outputPathBuffers,
+				),
+			),
+		)
 
-			outputPathString, ok := outputPath.(string)
-			if !ok {
-				return errors.New("output path is not a string")
-			}
-
-			outputPathBuffersMutex.Lock()
-			if _, ok := outputPathBuffers[outputPathString]; !ok {
-				outputPathBuffers[outputPathString] = pipe.NewSliceWriter()
-			}
-			outputPathBuffersMutex.Unlock()
-
-			err = outputPathBuffers[outputPathString].WriteObject(object)
-			if err != nil {
-				return errors.Wrap(err, "error writing object to buffer")
-			}
-			return nil
-		}))
+		logger.Info(map[string]interface{}{
+			"msg": "starting pipeline",
+			"pipeline": p.Map(),
+		})
+		logger.Flush()
 
 		err = p.Run()
 		if err != nil {
-			return errors.Wrap(err, "error processing interator to writer")
+			return errors.Wrap(err, "error processing iterator to writer")
 		}
 
-		for outputPath, sliceWriter := range outputPathBuffers {
-			p := pipe.NewBuilder().Input(sliceWriter.Iterator())
-			outputWriter, err := BuildWriter(
-				outputPath,
-				outputCompression,
-				outputFormat,
-				outputAppend,
-				outputHeader,
-				outputKeySerializer,
-				outputValueSerializer,
-				outputLineSeparator,
-				s3Client)
+		logger.Info(map[string]interface{}{
+			"msg": "done running pipeline",
+			"outputPathWriters": len(outputPathWriters),
+			"outputPathBuffers": len(outputPathBuffers),
+		})
+		logger.Flush()
+
+		for _, outputWriter := range outputPathWriters {
+
+			err := outputWriter.Flush()
 			if err != nil {
-				return errors.Wrap(err, "error creating output writer")
+				return errors.Wrap(err, "error flushing output writer")
 			}
-			err = p.Output(outputWriter).Run()
-			if err != nil {
-				return errors.Wrap(err, "error processing interator to writer")
+
+			if closer, ok := outputWriter.(io.Closer); ok {
+				err = closer.Close()
+				if err != nil {
+					return errors.Wrap(err, "error flushing output writer")
+				}
 			}
+
+		}
+
+		err = grw.WriteBuffers(outputPathBuffers, "none", outputAppend, outputMkdirs, s3Client)
+		if err != nil {
+			return errors.Wrap(err, "error writing buffers to files")
 		}
 	}
 
@@ -1262,6 +1352,11 @@ func processAsBatch(inputReader grw.ByteReadCloser, processConfig *config.Proces
 		return errors.Wrap(err, "error writing to output file")
 	}
 
+	err = outputWriter.Flush()
+	if err != nil {
+		return errors.Wrap(err, "error flushing to output file")
+	}
+
 	err = outputWriter.Close()
 	if err != nil {
 		return errors.Wrap(err, "error writing to output file")
@@ -1487,7 +1582,7 @@ func processFunction(cmd *cobra.Command, args []string) {
 			processConfig.Input.ReaderBufferSize,
 			s3Client)
 		if err != nil {
-			logger.Fatal(errors.Wrap(err, "error opening resource from uri "+processConfig.Input.Uri))
+			logger.Fatal(errors.Wrapf(err, "error opening resource from uri %q", processConfig.Input.Uri))
 		}
 		inputReader = r
 

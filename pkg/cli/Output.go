@@ -40,6 +40,7 @@ const (
 	FlagOutputValueLower    string = "output-value-lower"
 	FlagOutputValueUpper    string = "output-value-upper"
 	FlagOutputNoDataValue   string = "output-no-data-value"
+	FlagOutputKeyValueSeparator string = "output-key-value-separator"
 	FlagOutputLineSeparator string = "output-line-separator"
 	FlagOutputExpandHeader  string = "output-expand-header"
 	FlagOutputEscapePrefix  string = "output-escape-prefix"
@@ -49,6 +50,8 @@ const (
 	FlagOutputEscapeSpace   string = "output-escape-space"
 	FlagOutputSorted        string = "output-sorted"
 	FlagOutputReversed      string = "output-reversed"
+
+	DefaultOutputLineSeparator = "\n"
 )
 
 func CheckOutput(v *viper.Viper) error {
@@ -77,7 +80,8 @@ func InitOutputFlags(flag *pflag.FlagSet, defaultOutputFormat string) {
 	flag.Bool(FlagOutputValueLower, false, "lower case output values, including tag values, and property values")
 	flag.Bool(FlagOutputValueUpper, false, "upper case output values, including tag values, and property values")
 	flag.String(FlagOutputNoDataValue, "", "no data value, e.g., used for missing values when converting JSON to CSV")
-	flag.String(FlagOutputLineSeparator, "\n", "override new line value.  Used with properties and JSONL formats.")
+	flag.String(FlagOutputKeyValueSeparator, "=", "override key-value separator.")
+	flag.String(FlagOutputLineSeparator, DefaultOutputLineSeparator, "override new line value.  Used with properties and JSONL formats.")
 	flag.Bool(FlagOutputExpandHeader, false, "expand output header.  Used with CSV and TSV formats.")
 	flag.String(FlagOutputEscapePrefix, "", "override escape prefix.  Used with properties format.")
 	flag.Bool(FlagOutputEscapeColon, false, "Escape colon characters in output.  Used with properties format.")
