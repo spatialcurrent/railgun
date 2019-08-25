@@ -982,6 +982,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		outputHeader = append(outputHeader, str)
 	}
 	outputAppend := processConfig.Output.Append
+	outputOverwrite := processConfig.Output.Overwrite
 	outputMkdirs := processConfig.Output.Mkdirs
 	outputKeySerializer := processConfig.Output.KeySerializer()
 	outputValueSerializer := processConfig.Output.ValueSerializer()
@@ -1046,8 +1047,7 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 		)
 
 		logger.Info(map[string]interface{}{
-			"msg":      "starting pipeline",
-			"pipeline": p.Map(),
+			"msg": "starting pipeline",
 		})
 		logger.Flush()
 
@@ -1079,7 +1079,14 @@ func processStreamToStream(inputReader grw.ByteReadCloser, processConfig *config
 
 		}
 
-		err = grw.WriteBuffers(outputPathBuffers, "none", outputAppend, outputMkdirs, s3Client)
+		err = grw.WriteBuffers(&grw.WriteBuffersInput{
+			Buffers:   outputPathBuffers,
+			Algorithm: "none",
+			Overwrite: outputOverwrite,
+			Append:    outputAppend,
+			Mkdirs:    outputMkdirs,
+			S3Client:  s3Client,
+		})
 		if err != nil {
 			return errors.Wrap(err, "error writing buffers to files")
 		}
