@@ -175,11 +175,45 @@ func (c *RailgunCatalog) ParseLayer(obj interface{}) (*core.Layer, error) {
 	if len(expression) > 0 {
 		node, err := dfl.ParseCompile(expression)
 		if err != nil {
-			return &core.Layer{}, errors.Wrap(err, "error parsing process expression")
+			return &core.Layer{}, errors.Wrap(err, "error parsing layer expression")
 		}
 		lyr.Node = node
 	}
 	return lyr, nil
+}
+
+func (c *RailgunCatalog) ParseFunction(obj interface{}) (*core.Function, error) {
+	expression := gtg.TryGetString(obj, "expression", "")
+	if len(expression) == 0 {
+		return &core.Function{}, &rerrors.ErrMissingRequiredParameter{Name: "expression"}
+	}
+	node, err := dfl.ParseCompile(expression)
+	if err != nil {
+		return &core.Function{}, errors.Wrap(err, "error parsing function expression")
+	}
+	name := gtg.TryGetString(obj, "name", "")
+	if len(name) == 0 {
+		return &core.Function{}, &rerrors.ErrMissingRequiredParameter{Name: "name"}
+	}
+	title := gtg.TryGetString(obj, "title", "")
+	description := gtg.TryGetString(obj, "description", "")
+	aliases, err := parser.ParseStringArray(obj, "aliases")
+	if err != nil {
+		return &core.Function{}, err
+	}
+	tags, err := parser.ParseStringArray(obj, "tags")
+	if err != nil {
+		return &core.Function{}, err
+	}
+	f := &core.Function{
+		Name:        name,
+		Title:       coalesce(title, name),
+		Description: coalesce(description, title, name),
+		Aliases:     aliases,
+		Node:        node,
+		Tags:        tags,
+	}
+	return f, nil
 }
 
 func (c *RailgunCatalog) ParseProcess(obj interface{}) (*core.Process, error) {
@@ -326,6 +360,8 @@ func (c *RailgunCatalog) ParseItem(obj interface{}, t reflect.Type) (core.Base, 
 		return c.ParseDataStore(obj)
 	case core.LayerType:
 		return c.ParseLayer(obj)
+	case core.FunctionType:
+		return c.ParseFunction(obj)
 	case core.ProcessType:
 		return c.ParseProcess(obj)
 	case core.ServiceType:
@@ -360,6 +396,14 @@ func (c *RailgunCatalog) GetLayer(name string) (*core.Layer, bool) {
 		return nil, false
 	}
 	return obj.(*core.Layer), ok
+}
+
+func (c *RailgunCatalog) GetFunction(name string) (*core.Function, bool) {
+	obj, ok := c.Get(name, core.FunctionType)
+	if !ok {
+		return nil, false
+	}
+	return obj.(*core.Function), ok
 }
 
 func (c *RailgunCatalog) GetProcess(name string) (*core.Process, bool) {
@@ -414,6 +458,8 @@ func (c *RailgunCatalog) GetItem(name string, t reflect.Type) (core.Base, bool) 
 		return c.GetDataStore(name)
 	case core.LayerType:
 		return c.GetLayer(name)
+	case core.FunctionType:
+		return c.GetFunction(name)
 	case core.ProcessType:
 		return c.GetProcess(name)
 	case core.ServiceType:
@@ -460,6 +506,13 @@ func (c *RailgunCatalog) DeleteLayer(name string) error {
 		return &rerrors.ErrMissingObject{Type: "layer", Name: name}
 	}
 	return c.Delete(name, core.LayerType)
+}
+
+func (c *RailgunCatalog) DeleteFunction(name string) error {
+	if _, ok := c.GetFunction(name); !ok {
+		return &rerrors.ErrMissingObject{Type: "function", Name: name}
+	}
+	return c.Delete(name, core.FunctionType)
 }
 
 func (c *RailgunCatalog) DeleteProcess(name string) error {
@@ -512,6 +565,8 @@ func (c *RailgunCatalog) DeleteItem(name string, t reflect.Type) error {
 		return c.DeleteDataStore(name)
 	case core.LayerType:
 		return c.DeleteLayer(name)
+	case core.FunctionType:
+		return c.DeleteFunction(name)
 	case core.ProcessType:
 		return c.DeleteProcess(name)
 	case core.ServiceType:
@@ -536,6 +591,10 @@ func (c *RailgunCatalog) ListLayers() []*core.Layer {
 	return c.Catalog.List(core.LayerType).([]*core.Layer)
 }
 
+func (c *RailgunCatalog) ListFunctions() []*core.Function {
+	return c.Catalog.List(core.FunctionType).([]*core.Function)
+}
+
 func (c *RailgunCatalog) ListProcesses() []*core.Process {
 	return c.Catalog.List(core.ProcessType).([]*core.Process)
 }
@@ -552,7 +611,7 @@ func (c *RailgunCatalog) ListWorkflows() []*core.Workflow {
 	return c.Catalog.List(core.WorkflowType).([]*core.Workflow)
 }
 
-func (c *RailgunCatalog) LoadFromUri(uri string, logger *gsl.Logger, s3_client *s3.S3, messages chan interface{}) error {
+func (c *RailgunCatalog) LoadFromUri(uri string, logger *gsl.Logger, s3Client *s3.S3, messages chan interface{}) error {
 
 	//logger.Info(fmt.Sprintf("* loading catalog from %s", uri))
 
@@ -568,7 +627,13 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *gsl.Logger, s3_client *
 			return nil, &rerrors.ErrInvalidConfig{Name: "uri", Value: uri}
 		}
 
-		reader, _, err := grw.ReadFromResource(uri, compression, 4096, s3_client)
+		reader, _, err := grw.ReadFromResource(&grw.ReadFromResourceInput{
+			Uri:        uri,
+			Alg:        compression,
+			Dict:       grw.NoDict,
+			BufferSize: grw.DefaultBufferSize,
+			S3Client:   s3Client,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -696,6 +761,35 @@ func (c *RailgunCatalog) LoadFromUri(uri string, logger *gsl.Logger, s3_client *
 					messages <- map[string]interface{}{
 						"init": map[string]interface{}{
 							"layer": map[string]interface{}{"name": obj.Name},
+						},
+					}
+				}
+			}
+		}
+
+		key = "Function"
+		if list := v.MapIndex(reflect.ValueOf(key)); list.IsValid() {
+			listValue := reflect.ValueOf(list.Interface())
+			listType := listValue.Type()
+			if listType.Kind() == reflect.Array || listType.Kind() == reflect.Slice {
+				length := listValue.Len()
+				for i := 0; i < length; i++ {
+					m := listValue.Index(i).Interface()
+					obj, err := c.ParseFunction(m)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading function"))
+						logger.Error(err)
+						continue
+					}
+					err = c.Add(obj)
+					if err != nil {
+						logger.Error(errors.Wrap(&rerrors.ErrInvalidObject{Value: m}, "error loading function"))
+						logger.Error(err)
+						continue
+					}
+					messages <- map[string]interface{}{
+						"init": map[string]interface{}{
+							"function": map[string]interface{}{"name": obj.Name},
 						},
 					}
 				}
@@ -941,6 +1035,32 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 		}
 	}
 
+	functionsByName, err := func(functions []string) (map[string]*core.Function, error) {
+		functionsByName := map[string]*core.Function{}
+		for _, str := range functions {
+			if !strings.HasPrefix(str, "{") {
+				return functionsByName, &rerrors.ErrInvalidConfig{Name: "function", Value: str}
+			}
+			_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+			if err != nil {
+				return functionsByName, &rerrors.ErrInvalidConfig{Name: "function", Value: str}
+			}
+			f, err := c.ParseFunction(m)
+			if err != nil {
+				return functionsByName, errors.Wrap(err, "error parsing function")
+			}
+			functionsByName[f.Name] = f
+		}
+		return functionsByName, nil
+	}(v.GetStringArray("function"))
+
+	for _, function := range functionsByName {
+		err = c.Add(function)
+		if err != nil {
+			return err
+		}
+	}
+
 	processesByName, err := func(processes []string) (map[string]*core.Process, error) {
 		processesByName := map[string]*core.Process{}
 		for _, str := range processes {
@@ -1080,7 +1200,7 @@ func (c *RailgunCatalog) LoadFromViper(v *viper.Viper) error {
 
 }
 
-func (c *RailgunCatalog) SaveToUri(uri string, s3_client *s3.S3) error {
+func (c *RailgunCatalog) SaveToUri(uri string, s3Client *s3.S3) error {
 
 	data := c.Dump(nil)
 
@@ -1114,14 +1234,20 @@ func (c *RailgunCatalog) SaveToUri(uri string, s3_client *s3.S3) error {
 			if i == -1 {
 				return errors.New("s3 path missing bucket")
 			}
-			err := grw.UploadS3Object(uriPath[0:i], uriPath[i+1:], bytes.NewBuffer(b), s3_client)
+			err := grw.UploadS3Object(uriPath[0:i], uriPath[i+1:], bytes.NewBuffer(b), s3Client)
 			if err != nil {
 				return errors.Wrap(err, "error uploading new version of catalog to S3")
 			}
 			return nil
 		}
 
-		outputWriter, err := grw.WriteToResource(uri, compression, false, nil)
+		outputWriter, err := grw.WriteToResource(&grw.WriteToResourceInput{
+			Uri:      uri,
+			Alg:      compression,
+			Dict:     grw.NoDict,
+			Append:   false,
+			S3Client: nil,
+		})
 		if err != nil {
 			return errors.Wrap(err, "error opening writer")
 		}

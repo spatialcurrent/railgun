@@ -8,6 +8,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spatialcurrent/railgun/pkg/cli"
 )
 
@@ -17,5 +20,9 @@ var gitBranch string
 var gitCommit string
 
 func main() {
-	cli.Execute(gitBranch, gitCommit)
+	err := cli.Execute(gitBranch, gitCommit)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 }

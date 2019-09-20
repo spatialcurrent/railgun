@@ -21,6 +21,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
+	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/middleware"
@@ -123,7 +124,7 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 
 	results := map[string]interface{}{}
 	exitCodes := map[string]int{}
-	errorBuffers := map[string]grw.Buffer{}
+	errorBuffers := map[string]io.Buffer{}
 
 	for _, job := range workflow.Jobs {
 		errorWriter, errorBuffer := grw.WriteMemoryBytes()
@@ -154,7 +155,13 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 			continue
 		}
 
-		inputReader, _, err := grw.ReadFromResource(inputUri, job.Service.DataStore.Compression, 4096, nil)
+		inputReader, _, err := grw.ReadFromResource(&grw.ReadFromResourceInput{
+			Uri:        inputUri,
+			Alg:        job.Service.DataStore.Compression,
+			Dict:       grw.NoDict,
+			BufferSize: grw.DefaultBufferSize,
+			S3Client:   nil,
+		})
 		if err != nil {
 			errorWriter.WriteError(errors.Wrap(err, "error opening resource at uri "+inputUri)) // #nosec
 			exitCodes[job.Name] = 1
@@ -207,7 +214,13 @@ func (h *WorkflowExecHandler) Post(w http.ResponseWriter, r *http.Request, forma
 				continue
 			}
 
-			outputWriter, err := grw.WriteToResource(outputUri, job.Output.Compression, false, nil)
+			outputWriter, err := grw.WriteToResource(&grw.WriteToResourceInput{
+				Uri:      outputUri,
+				Alg:      job.Output.Compression,
+				Dict:     grw.NoDict,
+				Append:   false,
+				S3Client: nil,
+			})
 			if err != nil {
 				errorWriter.WriteError(errors.Wrap(err, "error opening output for job "+job.Name)) // #nosec
 				exitCodes[job.Name] = 1

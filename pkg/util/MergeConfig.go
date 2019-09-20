@@ -25,7 +25,13 @@ func MergeConfig(v *viper.Viper, configUri string) {
 
 	v.SetConfigType(configFormat)
 
-	configReader, _, err := grw.ReadFromResource(configUri, "", 4096, nil)
+	configReader, _, err := grw.ReadFromResource(&grw.ReadFromResourceInput{
+		Uri:        configUri,
+		Alg:        "",
+		Dict:       grw.NoDict,
+		BufferSize: grw.DefaultBufferSize,
+		S3Client:   nil,
+	})
 	if err != nil {
 		panic(err)
 	}

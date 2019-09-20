@@ -201,6 +201,11 @@ func NewRailgunRouter(input *NewRailgunRouterInput) *RailgunRouter {
 			Singular string
 			Plural   string
 			Type     reflect.Type
+		}{Singular: "functions", Plural: "functions", Type: core.FunctionType},
+		struct {
+			Singular string
+			Plural   string
+			Type     reflect.Type
 		}{Singular: "process", Plural: "processes", Type: core.ProcessType},
 		struct {
 			Singular string

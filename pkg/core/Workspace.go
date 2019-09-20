@@ -12,12 +12,14 @@ import (
 	"reflect"
 
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
+
+	"github.com/spatialcurrent/railgun/pkg/mapper"
 )
 
 type Workspace struct {
-	Name        string `rest:"name, the unique name of the workspace" required:"yes"`
-	Title       string `rest:"title, the title of the workspace"`
-	Description string `rest:"description, a verbose description of the workspace"`
+	Name        string `map:"name" rest:"name, the unique name of the workspace" required:"yes"`
+	Title       string `map:"title" rest:"title, the title of the workspace"`
+	Description string `map:"description" rest:"description, a verbose description of the workspace"`
 }
 
 func (ws Workspace) GetName() string {
@@ -25,11 +27,7 @@ func (ws Workspace) GetName() string {
 }
 
 func (ws Workspace) Map(ctx context.Context) map[string]interface{} {
-	return map[string]interface{}{
-		"name":        ws.Name,
-		"title":       ws.Title,
-		"description": ws.Description,
-	}
+	return mapper.MarshalMapWithContext(ctx, ws)
 }
 
 func (ws Workspace) Dfl(ctx context.Context) string {

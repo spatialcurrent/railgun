@@ -9,11 +9,11 @@ package util
 
 import (
 	"github.com/pkg/errors"
-	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
+	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 )
 
-func DecryptReader(reader grw.ByteReadCloser, passphrase string, salt string) ([]byte, error) {
-	encrypted, err := reader.ReadAllAndClose()
+func DecryptReader(r io.Reader, passphrase string, salt string) ([]byte, error) {
+	encrypted, err := io.ReadAllAndClose(r)
 	if err != nil {
 		return make([]byte, 0), errors.Wrap(err, "error reading from resource")
 	}

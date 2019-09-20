@@ -52,7 +52,13 @@ func (d Dfl) Node() (dfl.Node, error) {
 	expression := d.Expression
 
 	if len(d.Uri) > 0 {
-		f, _, err := grw.ReadFromResource(d.Uri, "none", 4096, nil)
+		f, _, err := grw.ReadFromResource(&grw.ReadFromResourceInput{
+			Uri:        d.Uri,
+			Alg:        "none",
+			Dict:       grw.NoDict,
+			BufferSize: grw.DefaultBufferSize,
+			S3Client:   nil,
+		})
 		if err != nil {
 			return nil, errors.Wrap(err, "Error opening dfl file")
 		}

@@ -130,21 +130,27 @@ func (h *JobExecHandler) Post(w http.ResponseWriter, r *http.Request, format str
 		return nil, errors.Wrap(err, "invalid data store uri")
 	}
 
-	inputReader, _, err := grw.ReadFromResource(inputUri, job.Service.DataStore.Compression, 4096, nil)
+	inputReader, _, err := grw.ReadFromResource(&grw.ReadFromResourceInput{
+		Uri:        inputUri,
+		Alg:        job.Service.DataStore.Compression,
+		Dict:       grw.NoDict,
+		BufferSize: grw.DefaultBufferSize,
+		S3Client:   nil,
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "error opening resource at uri "+inputUri)
+		return nil, errors.Wrapf(err, "error opening resource at uri %q", inputUri)
 	}
 
 	inputBytes, err := inputReader.ReadAllAndClose()
 	if err != nil {
-		return nil, errors.Wrap(err, "error reading from resource at uri "+inputUri)
+		return nil, errors.Wrapf(err, "error reading from resource at uri %q", inputUri)
 	}
 
 	inputFormat := job.Service.DataStore.Format
 
 	inputObject, err := h.DeserializeBytes(inputBytes, inputFormat)
 	if err != nil {
-		return nil, errors.Wrap(err, "error deserializing input using format "+inputFormat)
+		return nil, errors.Wrapf(err, "error deserializing input using format %q", inputFormat)
 	}
 
 	_, outputObject, err := job.Service.Process.Node.Evaluate(variables, inputObject, dfl.DefaultFunctionMap, dfl.DefaultQuotes)

@@ -23,7 +23,7 @@ type Cache struct {
 	cache *gocache.Cache
 }
 
-func (c *Cache) Get(uri string, format string, compression string, bufferSize int, passphrase string, salt string, s3_client *s3.S3) (bool, interface{}, error) {
+func (c *Cache) Get(uri string, format string, compression string, bufferSize int, passphrase string, salt string, s3Client *s3.S3) (bool, interface{}, error) {
 
 	item, found := c.cache.Get(uri)
 	if found {
@@ -33,11 +33,13 @@ func (c *Cache) Get(uri string, format string, compression string, bufferSize in
 		return true, item, nil
 	}
 
-	inputReader, _, err := grw.ReadFromResource(
-		uri,
-		compression,
-		bufferSize,
-		s3_client)
+	inputReader, _, err := grw.ReadFromResource(&grw.ReadFromResourceInput{
+		Uri:        uri,
+		Alg:        compression,
+		Dict:       grw.NoDict,
+		BufferSize: bufferSize,
+		S3Client:   s3Client,
+	})
 	if err != nil {
 		return false, nil, errors.Wrap(err, "error opening resource at uri "+uri)
 	}

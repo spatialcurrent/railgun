@@ -54,11 +54,11 @@ func (p *Pipeline) GeoJSON() *Pipeline {
 	}
 }
 
-func (p *Pipeline) Evaluate(vars map[string]interface{}, inputObject interface{}) (map[string]interface{}, interface{}, error) {
+func (p *Pipeline) Evaluate(vars map[string]interface{}, inputObject interface{}, funcs dfl.FunctionMap) (map[string]interface{}, interface{}, error) {
 	return dfl.Pipeline{Nodes: p.Nodes}.Evaluate(
 		vars,
 		inputObject,
-		dfl.DefaultFunctionMap,
+		funcs,
 		dfl.DefaultQuotes)
 }
 

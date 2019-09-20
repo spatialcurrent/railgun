@@ -14,6 +14,7 @@ import (
 
 import (
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
+	"github.com/spatialcurrent/go-simple-serializer/pkg/serializer"
 )
 
 import (
@@ -24,6 +25,7 @@ type Input struct {
 	Uri               string        `viper:"input-uri" map:"Uri"`
 	Format            string        `viper:"input-format" map:"Format"`
 	Header            []interface{} `viper:"input-header" map:"Header"`
+	Type              string        `viper:"input-type" map:"Type"`
 	Comment           string        `viper:"input-comment" map:"Comment"`
 	LazyQuotes        bool          `viper:"input-lazy-quotes" map:"LazyQuotes"`
 	Compression       string        `viper:"input-compression" map:"Compression"`
@@ -46,7 +48,16 @@ type Input struct {
 }
 
 func (i Input) CanStream() bool {
-	return i.IsAthenaStoredQuery() || i.Format == "csv" || i.Format == "tsv" || i.Format == "jsonl"
+	if i.IsAthenaStoredQuery() {
+		return true
+	}
+
+	switch i.Format {
+	case serializer.FormatCSV, serializer.FormatTSV, serializer.FormatJSONL, "geojsonl":
+		return true
+	}
+
+	return false
 }
 
 func (i Input) HasFormat() bool {

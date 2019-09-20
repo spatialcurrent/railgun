@@ -28,7 +28,13 @@ import (
 )
 
 func BuildWriter(outputUri string, outputCompression string, outputFormat string, outputAppend bool, outputHeader []interface{}, outputKeySerializer stringify.Stringer, outputValueSerializer stringify.Stringer, outputNewLine string, s3Client *s3.S3) (pipe.Writer, error) {
-	outputWriter, err := grw.WriteToResource(outputUri, outputCompression, outputAppend, s3Client)
+	outputWriter, err := grw.WriteToResource(&grw.WriteToResourceInput{
+		Uri:      outputUri,
+		Alg:      outputCompression,
+		Dict:     grw.NoDict,
+		Append:   outputAppend,
+		S3Client: s3Client,
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "error opening output file")
 	}

@@ -14,6 +14,7 @@ import (
 
 import (
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
+	"github.com/spatialcurrent/go-simple-serializer/pkg/serializer"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 )
 
@@ -55,7 +56,16 @@ type Output struct {
 }
 
 func (o Output) CanStream() bool {
-	return (!o.Sorted) && (o.Format == "csv" || o.Format == "tsv" || o.Format == "jsonl")
+	if o.Sorted {
+		return false
+	}
+
+	switch o.Format {
+	case serializer.FormatCSV, serializer.FormatTSV, serializer.FormatJSONL:
+		return true
+	}
+
+	return false
 }
 
 func (o Output) HasFormat() bool {

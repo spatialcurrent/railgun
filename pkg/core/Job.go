@@ -12,15 +12,17 @@ import (
 	"reflect"
 
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
+
+	"github.com/spatialcurrent/railgun/pkg/mapper"
 )
 
 type Job struct {
-	Service     *Service               `rest:"service, the name of the service" required:"yes"`
-	Name        string                 `rest:"name, the name of the job, not required"`
-	Title       string                 `rest:"title, the title of the job, not required"`
-	Description string                 `rest:"description, a verbose description of the job, not required"`
-	Variables   map[string]interface{} `rest:"variables, the input variables for the job"`
-	Output      *DataStore             `rest:"output, the output for the job"`
+	Service     *Service               `map:"service" rest:"service, the name of the service" required:"yes"`
+	Name        string                 `map:"name" rest:"name, the name of the job, not required"`
+	Title       string                 `map:"title" rest:"title, the title of the job, not required"`
+	Description string                 `map:"description" rest:"description, a verbose description of the job, not required"`
+	Variables   map[string]interface{} `map:"variables,omitempty" rest:"variables, the input variables for the job"`
+	Output      *DataStore             `map:"output,omitempty" rest:"output, the output for the job"`
 }
 
 func (j Job) GetName() string {
@@ -28,23 +30,7 @@ func (j Job) GetName() string {
 }
 
 func (j Job) Map(ctx context.Context) map[string]interface{} {
-	m := map[string]interface{}{
-		"name":        j.Name,
-		"title":       j.Title,
-		"description": j.Description,
-		"service":     j.Service.Name,
-	}
-	variables := map[dfl.Node]dfl.Node{}
-	for k, v := range j.Variables {
-		variables[dfl.Literal{Value: k}] = dfl.Literal{Value: v}
-	}
-	if len(variables) > 0 {
-		m["variables"] = dfl.Dictionary{Nodes: variables}.Dfl(dfl.DefaultQuotes, false, 0)
-	}
-	if j.Output != nil {
-		m["output"] = j.Output.Name
-	}
-	return m
+	return mapper.MarshalMapWithContext(ctx, j)
 }
 
 func (j Job) Dfl(ctx context.Context) string {

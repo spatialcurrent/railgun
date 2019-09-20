@@ -105,23 +105,24 @@ func (h *ItemsHandler) Run(w http.ResponseWriter, r *http.Request, vars map[stri
 		return errors.Wrap(err, "error evaluating datastore uri")
 	}
 
-	var s3_client *s3.S3
+	var s3Client *s3.S3
 	if strings.HasPrefix(inputUriString, "s3://") {
 		client, err := h.GetAWSS3Client()
 		if err != nil {
 			return errors.Wrap(err, "error connecting to AWS")
 		}
-		s3_client = client
+		s3Client = client
 	}
 
 	inputFormat := layer.DataStore.Format
 	inputCompression := layer.DataStore.Compression
 
-	inputReader, inputMetadata, err := grw.ReadFromResource(
-		inputUriString,
-		inputCompression,
-		inputReaderBufferSize,
-		s3_client)
+	inputReader, inputMetadata, err := grw.ReadFromResource(&grw.ReadFromResourceInput{
+		Uri:        inputUriString,
+		Alg:        inputCompression,
+		BufferSize: inputReaderBufferSize,
+		S3Client:   s3Client,
+	})
 	if err != nil {
 		return errors.Wrap(err, "error opening resource from uri "+inputUriString)
 	}

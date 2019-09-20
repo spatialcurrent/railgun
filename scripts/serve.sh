@@ -9,7 +9,9 @@ fi
 
 LDFLAGS="-X main.gitBranch=$(git branch | grep \* | cut -d ' ' -f2) -X main.gitCommit=$(git rev-list -1 HEAD)"
 
-export CATALOG_URI=$DIR/../secret/catalog.remote.json
+#export CATALOG_URI=$DIR/../secret/catalog.remote.json
+#export CATALOG_URI=$DIR/../secret/prod.json
+export CATALOG_URI=$DIR/../secret/local.json
 export ROOT_PASSWORD=railgun
 export RUNTIME_MAX_PROCS=0
 export HTTP_ADDRESS=0.0.0.0:8080

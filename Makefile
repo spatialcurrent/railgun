@@ -64,7 +64,7 @@ fmt:  ## Format Go source code
 
 .PHONY: imports
 imports: ## Update imports in Go source code
-	goimports -w $$(find . -iname '*.go')
+	goimports -w -local github.com/spatialcurrent/railgun,github.com/spatialcurrent/ $$(find . -iname '*.go')
 
 .PHONY: vet
 vet: ## Vet Go source code
@@ -72,7 +72,7 @@ vet: ## Vet Go source code
 
 .PHONY: test_go
 test_go: ## Run Go tests
-	bash scripts/test.sh
+	CGO_ENABLED=0 bash scripts/test.sh
 
 build: build_cli build_javascript  ## Build CLI and JavaScript
 

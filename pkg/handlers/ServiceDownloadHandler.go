@@ -10,19 +10,15 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"path/filepath"
-
-	"golang.org/x/sync/errgroup"
-
-	//"io/ioutil"
 	"net/http"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
-)
 
-import (
+	"golang.org/x/sync/errgroup"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
@@ -30,6 +26,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
+	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
@@ -143,9 +140,25 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 		return "", nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
 	}
 
+	funcs := dfl.NewFuntionMapWithDefaults()
+
+	for _, fn := range h.Catalog.ListFunctions() {
+		for _, alias := range fn.Aliases {
+			funcs[alias] = func(fn dfl.Node) func(funcs dfl.FunctionMap, vars map[string]interface{}, ctx interface{}, args []interface{}, quotes []string) (interface{}, error) {
+				return func(funcs dfl.FunctionMap, vars map[string]interface{}, ctx interface{}, args []interface{}, quotes []string) (interface{}, error) {
+					_, out, err := fn.Evaluate(vars, args, funcs, dfl.DefaultQuotes)
+					if err != nil {
+						return dfl.Null{}, errors.Wrap(err, "invalid arguments")
+					}
+					return out, nil
+				}
+			}(fn.Node)
+		}
+	}
+
 	requestVars := map[string]interface{}{}
 	if service.Transform != nil {
-		_, newVariables, err := dfl.EvaluateMap(service.Transform, service.DataStore.Vars, r.URL.Query(), dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+		_, newVariables, err := dfl.EvaluateMap(service.Transform, service.DataStore.Vars, r.URL.Query(), funcs, dfl.DefaultQuotes)
 		if err != nil {
 			return "", nil, errors.Wrap(err, "invalid service transform")
 		}
@@ -167,7 +180,7 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 
 	h.SendDebug("Variables: " + fmt.Sprint(variables))
 
-	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, funcs, dfl.DefaultQuotes)
 	if err != nil {
 		return "", nil, errors.Wrap(err, "invalid data store uri")
 	}
@@ -176,7 +189,7 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 	cacheKeyDataStore := ""
 	inputUris := make([]string, 0)
 	lastModified := map[string]time.Time{}
-	inputReaders := map[string]grw.ByteReadCloser{}
+	inputReaders := map[string]io.ByteReadCloser{}
 	inputObjects := make([]interface{}, 0)
 
 	var s3Client *s3.S3
@@ -208,7 +221,7 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 					uri := fmt.Sprintf("s3://%s/%s", bucket, key)
 					valid := true
 					if service.DataStore.Filter != nil {
-						_, valid, err = dfl.EvaluateBool(service.DataStore.Filter, variables, map[string]interface{}{"uri": uri}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+						_, valid, err = dfl.EvaluateBool(service.DataStore.Filter, variables, map[string]interface{}{"uri": uri}, funcs, dfl.DefaultQuotes)
 						if err != nil {
 							return "", nil, errors.Wrap(err, "error evaluating filter on uri")
 						}
@@ -231,7 +244,7 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 			uri := fmt.Sprintf("s3://%s/%s", bucket, key)
 			valid := true
 			if service.DataStore.Filter != nil {
-				_, valid, err = dfl.EvaluateBool(service.DataStore.Filter, variables, map[string]interface{}{"uri": uri}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+				_, valid, err = dfl.EvaluateBool(service.DataStore.Filter, variables, map[string]interface{}{"uri": uri}, funcs, dfl.DefaultQuotes)
 				if err != nil {
 					return "", nil, errors.Wrap(err, "error evaluating filter on uri")
 				}
@@ -280,7 +293,12 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 		if object, found := h.Cache.Get(cacheKeyDataStore); found {
 			inputObjects = append(inputObjects, object)
 		} else {
-			inputReader, err := grw.ReadFromFile(inputFile, service.DataStore.Compression, 4096)
+			inputReader, err := grw.ReadFromFile(&grw.ReadFromFileInput{
+				File:       inputFile,
+				Alg:        service.DataStore.Compression,
+				Dict:       grw.NoDict,
+				BufferSize: grw.DefaultBufferSize,
+			})
 			if err != nil {
 				return "", nil, errors.Wrap(err, "error creating grw.ByteReadCloser for file at path \""+inputPath+"\"")
 			}
@@ -305,7 +323,13 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 					}
 					inputBytes = b
 				} else {
-					b, err := grw.ReadAllAndClose(inputUri, service.DataStore.Compression, s3Client)
+					b, err := grw.ReadAllAndClose(&grw.ReadAllAndCloseInput{
+						Uri:        inputUri,
+						Alg:        service.DataStore.Compression,
+						Dict:       grw.NoDict,
+						BufferSize: grw.DefaultBufferSize,
+						S3Client:   s3Client,
+					})
 					if err != nil {
 						return errors.Wrap(err, "error reading from resource at uri "+inputUri)
 					}
@@ -339,7 +363,7 @@ func (h *ServiceDownloadHandler) Get(w http.ResponseWriter, r *http.Request, for
 	variables, outputObject, err := service.Process.Node.Evaluate(
 		variables,
 		h.AggregateSlices(inputObjects),
-		dfl.DefaultFunctionMap,
+		funcs,
 		dfl.DefaultQuotes)
 	if err != nil {
 		return "", nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)

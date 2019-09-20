@@ -9,9 +9,7 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
 	"reflect"
@@ -27,10 +25,14 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
+	"github.com/spatialcurrent/go-pipe/pkg/pipe"
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
+	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
+	"github.com/spatialcurrent/go-simple-serializer/pkg/jsonl"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 	"github.com/spatialcurrent/go-try-get/pkg/gtg"
+
 	"github.com/spatialcurrent/railgun/pkg/core"
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/geo"
@@ -252,7 +254,27 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	variables["bbox"] = bufferedBoundingBox
 	//variables["limit"] = limit
 
-	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	funcs := dfl.NewFuntionMapWithDefaults()
+
+	for _, fn := range h.Catalog.ListFunctions() {
+		for _, alias := range fn.Aliases {
+			funcs[alias] = func(fn dfl.Node) func(funcs dfl.FunctionMap, vars map[string]interface{}, ctx interface{}, args []interface{}, quotes []string) (interface{}, error) {
+
+				return func(funcs dfl.FunctionMap, vars map[string]interface{}, ctx interface{}, args []interface{}, quotes []string) (interface{}, error) {
+
+					_, out, err := fn.Evaluate(vars, ctx, funcs, dfl.DefaultQuotes)
+					if err != nil {
+						return dfl.Null{}, errors.Wrap(err, "invalid arguments")
+					}
+					return out, nil
+
+				}
+
+			}(fn.Node)
+		}
+	}
+
+	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, funcs, dfl.DefaultQuotes)
 	if err != nil {
 		ctx.Context = context.WithValue(ctx.Context, "error", err)
 		inside = false
@@ -272,7 +294,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	p := pipeline.New().FilterBoundingBox().Next(service.Process.Node)
 
 	cacheKeyDataStore := ""
-	var inputReader grw.ByteReadCloser
+	var inputReader io.ByteReadCloser
 	var inputObject interface{}
 
 	var s3Client *s3.S3
@@ -357,7 +379,12 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 		} else {
 			inputObject = nil
 			cacheRequest.Hit = false
-			r, err := grw.ReadFromFile(inputFile, service.DataStore.Compression, 4096)
+			r, err := grw.ReadFromFile(&grw.ReadFromFileInput{
+				File:       inputFile,
+				Alg:        service.DataStore.Compression,
+				Dict:       grw.NoDict,
+				BufferSize: grw.DefaultBufferSize,
+			})
 			if err != nil {
 				err := errors.Wrap(err, "error creating grw.ByteReadCloser for file at path \""+inputPath+"\"")
 				ctx.Context = context.WithValue(ctx.Context, "error", err)
@@ -370,28 +397,35 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 	if inputObject == nil {
 		start := time.Now()
 		if inputReader == nil {
-			inputReader, _, err = grw.ReadFromResource(inputUri, service.DataStore.Compression, 4096, s3Client)
+			inputReader, _, err = grw.ReadFromResource(&grw.ReadFromResourceInput{
+				Uri:        inputUri,
+				Alg:        service.DataStore.Compression,
+				BufferSize: grw.DefaultBufferSize,
+				S3Client:   s3Client,
+			})
 			if err != nil {
 				return nil, errors.Wrapf(err, "error reading from resource at uri %q", inputUri)
 			}
 		}
 		if service.DataStore.Format == "jsonl" {
-			inputSlice := make([]interface{}, 0)
-			decoder := json.NewDecoder(inputReader)
-			for {
-				object := map[string]interface{}{}
-				err := decoder.Decode(&object)
-				if err != nil {
-					if err == io.EOF {
-						break
-					} else if err != nil {
-						ctx.Context = context.WithValue(ctx.Context, "error", err)
-						return nil, err
-					}
-				}
-				inputSlice = append(inputSlice, object)
+			it := jsonl.NewIterator(&jsonl.NewIteratorInput{
+				Reader:        inputReader,
+				SkipLines:     0,
+				SkipBlanks:    true,
+				SkipComments:  false,
+				Comment:       "#",
+				Trim:          false,
+				Limit:         -1,
+				LineSeparator: '\n',
+				DropCR:        true,
+			})
+			sw := pipe.NewSliceWriterWithValues(make([]interface{}, 0))
+			err := pipe.NewBuilder().Input(it).Output(sw).Run()
+			if err != nil {
+				ctx.Context = context.WithValue(ctx.Context, "error", err)
+				return nil, err
 			}
-			inputObject = inputSlice
+			inputObject = sw.Values()
 		} else {
 			inputBytes, err := inputReader.ReadAllAndClose()
 			if err != nil {
@@ -412,7 +446,7 @@ func (h *ServiceTileHandler) Get(w http.ResponseWriter, r *http.Request, format 
 
 	go h.Cache.Set(cacheKeyDataStore, inputObject, gocache.DefaultExpiration) // save variables to cache outside of request/response thread
 
-	variables, outputObject, err := p.Evaluate(variables, inputObject)
+	variables, outputObject, err := p.Evaluate(variables, inputObject, funcs)
 	if err != nil {
 		err := errors.Wrap(err, "error processing features")
 		ctx.Context = context.WithValue(ctx.Context, "error", err)

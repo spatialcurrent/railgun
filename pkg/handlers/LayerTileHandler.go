@@ -271,7 +271,8 @@ func (h *LayerTileHandler) Get(w http.ResponseWriter, r *http.Request, format st
 
 	_, outputObject, err := p.Evaluate(
 		variables,
-		inputObject)
+		inputObject,
+		dfl.DefaultFunctionMap)
 	if err != nil {
 		return nil, errors.Wrap(err, "error processing features")
 	}

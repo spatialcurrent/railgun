@@ -12,14 +12,17 @@ import (
 	"reflect"
 
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
+
+	"github.com/spatialcurrent/railgun/pkg/mapper"
 )
 
 type Process struct {
-	Name        string   `rest:"name, the unique name of the process" required:"yes"`
-	Title       string   `rest:"title, the title of the process"`
-	Description string   `rest:"description, a verbose description of the process"`
-	Node        dfl.Node `rest:"expression, the DFL expression of the process" required:"yes"`
-	Tags        []string `rest:"tags, tags for the service"`
+	Name        string                 `map:"name" rest:"name, the unique name of the process" required:"yes"`
+	Title       string                 `map:"title,omitempty" rest:"title, the title of the process"`
+	Description string                 `map:"description,omitempty" rest:"description, a verbose description of the process"`
+	Node        dfl.Node               `map:"expression,omitempty" rest:"expression, the DFL expression of the process" required:"yes"`
+	Defaults    map[string]interface{} `map:"defaults,omitempty" rest:"defaults, the default values of the variables for this process"`
+	Tags        []string               `map:"tags,omitempty" rest:"tags, tags for the service"`
 }
 
 func (p Process) GetName() string {
@@ -27,21 +30,7 @@ func (p Process) GetName() string {
 }
 
 func (p Process) Map(ctx context.Context) map[string]interface{} {
-	m := map[string]interface{}{
-		"name":        p.Name,
-		"title":       p.Title,
-		"description": p.Description,
-		"expression":  p.Node.Dfl(dfl.DefaultQuotes, true, 0),
-		"variables":   p.Node.Variables(),
-	}
-	tags := make([]dfl.Node, 0)
-	for _, v := range p.Tags {
-		tags = append(tags, dfl.Literal{Value: v})
-	}
-	if len(tags) > 0 {
-		m["tags"] = dfl.Array{Nodes: tags}.Dfl(dfl.DefaultQuotes, false, 0)
-	}
-	return m
+	return mapper.MarshalMapWithContext(ctx, p)
 }
 
 func (p Process) Dfl(ctx context.Context) string {

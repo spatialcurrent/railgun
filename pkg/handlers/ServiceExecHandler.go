@@ -34,6 +34,7 @@ import (
 	"github.com/spatialcurrent/go-adaptive-functions/pkg/af"
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
+	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 )
@@ -140,6 +141,22 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		return nil, &rerrors.ErrMissingObject{Type: "service", Name: serviceName}
 	}
 
+	funcs := dfl.NewFuntionMapWithDefaults()
+
+	for _, fn := range h.Catalog.ListFunctions() {
+		for _, alias := range fn.Aliases {
+			funcs[alias] = func(fn dfl.Node) func(funcs dfl.FunctionMap, vars map[string]interface{}, ctx interface{}, args []interface{}, quotes []string) (interface{}, error) {
+				return func(funcs dfl.FunctionMap, vars map[string]interface{}, ctx interface{}, args []interface{}, quotes []string) (interface{}, error) {
+					_, out, err := fn.Evaluate(vars, args, funcs, dfl.DefaultQuotes)
+					if err != nil {
+						return dfl.Null{}, errors.Wrap(err, "invalid arguments")
+					}
+					return out, nil
+				}
+			}(fn.Node)
+		}
+	}
+
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "error reading from request body")
@@ -169,7 +186,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 		service.DataStore.Vars,
 	)
 
-	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	_, inputUri, err := dfl.EvaluateString(service.DataStore.Uri, variables, map[string]interface{}{}, funcs, dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid data store uri")
 	}
@@ -178,7 +195,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 	cacheKeyDataStore := ""
 	inputUris := make([]string, 0)
 	lastModified := map[string]time.Time{}
-	inputReaders := map[string]grw.ByteReadCloser{}
+	inputReaders := map[string]io.ByteReadCloser{}
 	inputObjects := make([]interface{}, 0)
 
 	var s3Client *s3.S3
@@ -265,7 +282,12 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 			//fmt.Println("cache hit for datastore with key " + cacheKeyDataStore)
 			inputObjects = append(inputObjects, object)
 		} else {
-			inputReader, err := grw.ReadFromFile(inputFile, service.DataStore.Compression, 4096)
+			inputReader, err := grw.ReadFromFile(&grw.ReadFromFileInput{
+				File:       inputFile,
+				Alg:        service.DataStore.Compression,
+				Dict:       grw.NoDict,
+				BufferSize: grw.DefaultBufferSize,
+			})
 			if err != nil {
 				return nil, errors.Wrap(err, "error creating grw.ByteReadCloser for file at path \""+inputPath+"\"")
 			}
@@ -290,7 +312,13 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 					}
 					inputBytes = b
 				} else {
-					b, err := grw.ReadAllAndClose(inputUri, service.DataStore.Compression, s3Client)
+					b, err := grw.ReadAllAndClose(&grw.ReadAllAndCloseInput{
+						Uri:        inputUri,
+						Alg:        service.DataStore.Compression,
+						Dict:       grw.NoDict,
+						BufferSize: grw.DefaultBufferSize,
+						S3Client:   s3Client,
+					})
 					if err != nil {
 						return errors.Wrap(err, "error reading from resource at uri "+inputUri)
 					}
@@ -328,7 +356,7 @@ func (h *ServiceExecHandler) Post(w http.ResponseWriter, r *http.Request, format
 	variables, outputObject, err := service.Process.Node.Evaluate(
 		variables,
 		h.AggregateSlices(inputObjects),
-		dfl.DefaultFunctionMap,
+		funcs,
 		dfl.DefaultQuotes)
 	if err != nil {
 		return nil, errors.Wrap(err, "error evaluating process with name "+service.Process.Name)

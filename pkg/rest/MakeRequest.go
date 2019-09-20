@@ -18,7 +18,7 @@ import (
 )
 
 import (
-	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
+	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/json"
 	"github.com/spatialcurrent/go-sync-logger/pkg/gsl"
@@ -30,7 +30,7 @@ type MakeRequestInput struct {
 	Object        interface{}
 	Authorization string
 	OutputFormat  string
-	OutputWriter  grw.ByteWriteCloser
+	OutputWriter  io.ByteWriter
 	OutputPretty  bool
 	Logger        *gsl.Logger
 }
@@ -110,11 +110,13 @@ func MakeRequest(input *MakeRequestInput) error {
 	if err != nil {
 		return errors.Wrap(err, "error writing response to output writer")
 	}
-	_, err = input.OutputWriter.WriteString("\n")
+
+	err = input.OutputWriter.WriteByte('\n')
 	if err != nil {
 		return errors.Wrap(err, "error writing final newline to output writer")
 	}
-	err = input.OutputWriter.Flush()
+
+	err = io.Flush(input.OutputWriter)
 	if err != nil {
 		return errors.Wrap(err, "error flushing output writer")
 	}

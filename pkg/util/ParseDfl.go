@@ -19,7 +19,13 @@ func ParseDfl(dflUri string, dflExpression string) (dfl.Node, error) {
 	var dflNode dfl.Node
 
 	if len(dflUri) > 0 {
-		f, _, err := grw.ReadFromResource(dflUri, "none", 4096, nil)
+		f, _, err := grw.ReadFromResource(&grw.ReadFromResourceInput{
+			Uri:        dflUri,
+			Alg:        "",
+			Dict:       grw.NoDict,
+			BufferSize: grw.DefaultBufferSize,
+			S3Client:   nil,
+		})
 		if err != nil {
 			return nil, errors.Wrap(err, "Error opening dfl file")
 		}

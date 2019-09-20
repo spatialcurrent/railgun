@@ -15,6 +15,7 @@ var CoreTypes = map[string]reflect.Type{
 	"workspace": WorkspaceType,
 	"datastore": DataStoreType,
 	"layer":     LayerType,
+	"function":  FunctionType,
 	"process":   ProcessType,
 	"service":   ServiceType,
 	"job":       JobType,
