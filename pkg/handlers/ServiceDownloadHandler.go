@@ -24,6 +24,7 @@ import (
 	"github.com/gorilla/mux"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-reader-writer/pkg/io"

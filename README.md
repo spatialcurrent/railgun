@@ -31,7 +31,7 @@ The command line tool, `railgun`, can be used to easily covert data between form
 | windows | amd64 |
 | linux | arm64 |
 
-Pull requests to support other platforms are welcome!  See the [examples](#examples) section below for usage.
+Pull requests to support other platforms are welcome!  See the [CLI.md](docs/CLI.md) document for detailed usage and examples.
 
 **Go**
 
@@ -128,6 +128,14 @@ aws-vault exec default -- terraform plan
 ```
 
 # Testing
+
+**CLI**
+
+To run CLI testes use `make test_cli`, which uses [shUnit2](https://github.com/kward/shunit2).  If you recive a `shunit2:FATAL Please declare TMPDIR with path on partition with exec permission.` error, you can modify the `TMPDIR` environment variable in line or with `export TMPDIR=<YOUR TEMP DIRECTORY HERE>`. For example:
+
+```
+TMPDIR="/usr/local/tmp" make test_cli
+```
 
 **Go**
 

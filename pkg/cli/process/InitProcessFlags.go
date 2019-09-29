@@ -21,7 +21,7 @@ import (
 func InitProcessFlags(flag *pflag.FlagSet) {
 
 	flag.BoolP("dry-run", "", false, "parse and compile expression, but do not evaluate against context")
-	flag.BoolP("stream", "s", false, "stream process (context == row rather than encompassing array)")
+	flag.BoolP(FlagStream, "s", false, "stream process (context == row rather than encompassing array)")
 	flag.Duration("timeout", 1*time.Minute, "If not zero, then sets the timeout for the program.")
 
 	input.InitInputFlags(flag)

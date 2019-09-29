@@ -29,6 +29,7 @@ type Input struct {
 	Comment           string        `viper:"input-comment" map:"Comment"`
 	LazyQuotes        bool          `viper:"input-lazy-quotes" map:"LazyQuotes"`
 	Compression       string        `viper:"input-compression" map:"Compression"`
+	Dictionary        []byte        `viper:"input-dict" map:"Dictionary"`
 	ReaderBufferSize  int           `viper:"input-reader-buffer-size" map:"ReaderBufferSize"`
 	Passphrase        string        `viper:"input-passphrase" map:"Passphrase"`
 	Salt              string        `viper:"input-salt" map:"Salt"`
@@ -53,7 +54,7 @@ func (i Input) CanStream() bool {
 	}
 
 	switch i.Format {
-	case serializer.FormatCSV, serializer.FormatTSV, serializer.FormatJSONL, "geojsonl":
+	case serializer.FormatCSV, serializer.FormatTSV, serializer.FormatJSONL, serializer.FormatGob, serializer.FormatTags:
 		return true
 	}
 

@@ -15,7 +15,9 @@ import (
 
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
+	"github.com/spatialcurrent/railgun/pkg/cli/algorithms"
 	"github.com/spatialcurrent/railgun/pkg/cli/client"
+	"github.com/spatialcurrent/railgun/pkg/cli/formats"
 	"github.com/spatialcurrent/railgun/pkg/cli/process"
 	"github.com/spatialcurrent/railgun/pkg/cli/serve"
 	"github.com/spatialcurrent/railgun/pkg/cli/version"
@@ -67,6 +69,9 @@ Through go-simple-serializer, supports the follow file formats: ` + strings.Join
 	}))
 
 	rootCmd.AddCommand(client.NewCommand())
+
+	rootCmd.AddCommand(algorithms.NewCommand())
+	rootCmd.AddCommand(formats.NewCommand())
 
 	return rootCmd.Execute()
 }

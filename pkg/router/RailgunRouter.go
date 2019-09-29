@@ -20,6 +20,7 @@ import (
 import (
 	"github.com/NYTimes/gziphandler"
 	gocache "github.com/patrickmn/go-cache"
+
 	"github.com/spatialcurrent/go-adaptive-functions/pkg/af"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/go-sync-logger/pkg/gsl"

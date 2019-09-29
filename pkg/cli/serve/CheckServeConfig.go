@@ -9,6 +9,7 @@ package serve
 
 import (
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/railgun/pkg/cli/http"
 	"github.com/spatialcurrent/railgun/pkg/cli/jwt"
 	"github.com/spatialcurrent/railgun/pkg/cli/logging"

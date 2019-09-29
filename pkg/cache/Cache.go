@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 )

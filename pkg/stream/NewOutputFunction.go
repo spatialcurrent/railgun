@@ -8,7 +8,6 @@
 package stream
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -17,26 +16,30 @@ import (
 	"github.com/spatialcurrent/go-pipe/pkg/pipe"
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-reader-writer/pkg/io"
-	"github.com/spatialcurrent/go-simple-serializer/pkg/jsonl"
-	"github.com/spatialcurrent/go-simple-serializer/pkg/sv"
+	"github.com/spatialcurrent/go-simple-serializer/pkg/writer"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 )
 
 type NewOutputFunctionInput struct {
-	Node            dfl.Node // output node
-	Vars            map[string]interface{}
-	Format          string
-	Compression     string
-	Header          []interface{}
-	KeySerializer   stringify.Stringer
-	ValueSerializer stringify.Stringer
-	LineSeparator   string
-	Mutex           *sync.RWMutex
-	PathWriters     map[string]pipe.Writer
-	PathBuffers     map[string]io.Buffer
+	Node              dfl.Node // output node
+	Vars              map[string]interface{}
+	Format            string
+	Algorithm         string
+	Dictionary        []byte
+	Header            []interface{}
+	ExpandHeader      bool
+	KeySerializer     stringify.Stringer
+	ValueSerializer   stringify.Stringer
+	LineSeparator     string
+	KeyValueSeparator string
+	Fit               bool
+	Pretty            bool
+	Sorted            bool
+	Reversed          bool
+	Mutex             *sync.RWMutex
+	PathWriters       map[string]pipe.Writer
+	PathBuffers       map[string]io.Buffer
 }
-
-//func NewOutputFunction(outputNode dfl.Node, dflVars map[string]interface{}, outputFormat string, outputCompression string, outputHeader []interface{}, outputKeySerializer stringify.Stringer, outputValueSerializer stringify.Stringer, outputLineSeparator string, outputPathBuffersMutex *sync.RWMutex, outputPathWriters map[string]pipe.Writer, outputPathBuffers map[string]grw.Buffer) func(object interface{}) error {
 
 func NewOutputFunction(input *NewOutputFunctionInput) func(object interface{}) error {
 	return func(object interface{}) error {
@@ -54,31 +57,30 @@ func NewOutputFunction(input *NewOutputFunctionInput) func(object interface{}) e
 		input.Mutex.Lock()
 		if _, ok := input.PathBuffers[outputPathString]; !ok {
 
-			outputWriter, outputBuffer, err := grw.WriteBytes(input.Compression, []byte{})
+			compressedWriter, outputBuffer, err := grw.WriteBytes(input.Algorithm, input.Dictionary)
 			if err != nil {
-				return errors.Wrapf(err, "error writing to bytes for compression %q", input.Compression)
+				return errors.Wrapf(err, "error writing to bytes for compression %q", input.Algorithm)
 			}
 
-			if input.Format == "csv" || input.Format == "tsv" {
-				separator, err := sv.FormatToSeparator(input.Format)
-				if err != nil {
-					return err
-				}
-				input.PathWriters[outputPathString] = sv.NewWriter(
-					outputWriter,
-					separator,
-					input.Header,
-					input.KeySerializer,
-					input.ValueSerializer,
-					true,
-					false)
-			} else if input.Format == "jsonl" {
-				input.PathWriters[outputPathString] = jsonl.NewWriter(outputWriter, input.LineSeparator, input.KeySerializer, false)
-			} else {
-				return fmt.Errorf("cannot create streaming writer for format %q", input.Format)
+			formattedWriter, err := writer.NewWriter(&writer.NewWriterInput{
+				Writer:            compressedWriter,
+				Format:            input.Format,
+				Header:            input.Header,
+				ExpandHeader:      input.ExpandHeader,
+				KeySerializer:     input.KeySerializer,
+				ValueSerializer:   input.ValueSerializer,
+				KeyValueSeparator: input.KeyValueSeparator,
+				LineSeparator:     input.LineSeparator,
+				Fit:               input.Fit,
+				Pretty:            input.Pretty,
+				Sorted:            input.Sorted,
+				Reversed:          input.Reversed,
+			})
+			if err != nil {
+				return errors.Wrap(err, "error creating formatted writer")
 			}
-
 			input.PathBuffers[outputPathString] = outputBuffer
+			input.PathWriters[outputPathString] = formattedWriter
 		}
 		input.Mutex.Unlock()
 

@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-simple-serializer/pkg/properties"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 	"github.com/spatialcurrent/viper"

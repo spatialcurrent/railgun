@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/go-swagger-structs/swagger"
 	"github.com/spatialcurrent/railgun/pkg/core"

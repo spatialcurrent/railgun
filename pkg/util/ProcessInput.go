@@ -9,6 +9,7 @@ package util
 
 import (
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 )

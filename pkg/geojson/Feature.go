@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/railgun/pkg/binary"
 )
 

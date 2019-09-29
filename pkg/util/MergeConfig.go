@@ -11,6 +11,7 @@ import (
 	"bytes"
 
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/viper"
 )

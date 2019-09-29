@@ -13,7 +13,7 @@ import (
 
 // InitLoggingFlags initializes the logging flags.
 func InitLoggingFlags(flag *pflag.FlagSet) {
-	flag.BoolP("time", "t", false, "print timing output to info log")
+	flag.Bool(FlagTime, false, "print timing output to info log")
 
 	flag.BoolP(FlagVerbose, "v", false, "print verbose output to stdout")
 

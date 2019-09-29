@@ -9,6 +9,7 @@ package input
 
 import (
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/viper"
 )
 
@@ -53,14 +54,6 @@ func CheckInputConfig(v *viper.Viper, formats []string) error {
 	if (inputFormat == "csv" || inputFormat == "tsv") && len(inputComment) > 1 {
 		return &ErrInvalidInputComment{Value: inputComment}
 	}
-	inputType := v.GetString(FlagInputType)
-	if len(inputType) > 0 {
-		switch inputType {
-		case "geojson.Feature", "geojson.Geometry", "geojson.Point":
-		default:
-			return &ErrInvalidInputType{Value: inputType}
-		}
-	}
-
+	// Not checking for input type, since checked later with InitInputType.
 	return nil
 }

@@ -8,8 +8,6 @@
 package input
 
 import (
-	"strings"
-
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/pflag"
@@ -18,8 +16,10 @@ import (
 // InitInputFlags initializes the input flags.
 func InitInputFlags(flag *pflag.FlagSet) {
 	flag.StringP(FlagInputURI, "i", "stdin", "the input uri")
-	flag.StringP(FlagInputCompression, "", "", "the input compression algorithm, one of: "+strings.Join(grw.Algorithms, ", "))
-	flag.String(FlagInputFormat, "", "the input format, one of: "+strings.Join(gss.Formats, ", "))
+	flag.String(FlagInputCompression, "", "the input compression algorithm")
+	flag.String(FlagInputDictionary, string(grw.NoDict), "the input compression algorithm dictionary, if any used")
+	flag.String(FlagInputFormat, "", "the input format")
+	flag.String(FlagInputType, "", "the input type")
 	flag.StringSliceP(FlagInputHeader, "", []string{}, "the input header")
 	flag.IntP(FlagInputLimit, "", gss.NoLimit, "maximum number of objects to read from input")
 	flag.StringP(FlagInputComment, "c", "", "the comment character for the input, e.g, #")

@@ -14,6 +14,7 @@ const (
 	FlagInfoDestination  = "info-destination"
 	FlagInfoCompression  = "info-compression"
 	FlagInfoFormat       = "info-format"
+	FlagTime             = "time"
 	FlagVerbose          = "verbose"
 
 	DefaultFormat           = "tags"

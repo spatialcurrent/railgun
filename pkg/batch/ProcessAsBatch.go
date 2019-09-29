@@ -8,6 +8,8 @@
 package batch
 
 import (
+	"reflect"
+
 	"github.com/pkg/errors"
 
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -23,6 +25,7 @@ import (
 
 type ProcessAsBatchInput struct {
 	Reader   io.Reader
+	Type     reflect.Type
 	Config   *config.Process
 	S3Client *s3.S3
 	Logger   *gsl.Logger
@@ -32,6 +35,7 @@ func ProcessAsBatch(input *ProcessAsBatchInput) error {
 
 	inputObject, err := gss.DeserializeReader(&gss.DeserializeReaderInput{
 		Reader:          input.Reader,
+		Type:            input.Type,
 		Format:          input.Config.Input.Format,
 		Header:          input.Config.Input.Header,
 		Comment:         input.Config.Input.Comment,
@@ -50,7 +54,7 @@ func ProcessAsBatch(input *ProcessAsBatchInput) error {
 		UnescapeEqual:   input.Config.Input.UnescapeEqual,
 	})
 	if err != nil {
-		return errors.Wrap(err, "error parsing input object")
+		return errors.Wrap(err, "error deserializing input object")
 	}
 
 	dflNode, err := input.Config.Dfl.Node()
@@ -79,6 +83,7 @@ func ProcessAsBatch(input *ProcessAsBatchInput) error {
 	outputBytes, err := gss.SerializeBytes(&gss.SerializeBytesInput{
 		Object:            outputObject,
 		Format:            input.Config.Output.Format,
+		FormatSpecifier:   input.Config.Output.FormatSpecifier,
 		Header:            input.Config.Output.Header,
 		Limit:             input.Config.Output.Limit,
 		Pretty:            input.Config.Output.Pretty,

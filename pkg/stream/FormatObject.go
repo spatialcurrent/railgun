@@ -9,6 +9,7 @@ package stream
 
 import (
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 )
 

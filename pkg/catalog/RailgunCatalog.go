@@ -19,6 +19,7 @@ import (
 import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/viper"
 )
 

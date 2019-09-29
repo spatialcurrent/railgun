@@ -14,7 +14,9 @@ import (
 const (
 	FlagOutputURI               string = "output-uri"
 	FlagOutputCompression       string = "output-compression"
+	FlagOutputDictionary        string = "output-dict"
 	FlagOutputFormat            string = "output-format"
+	FlagOutputFormatSpecifier   string = "output-format-specifier"
 	FlagOutputFit               string = "output-fit"
 	FlagOutputPretty            string = "output-pretty"
 	FlagOutputHeader            string = "output-header"

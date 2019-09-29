@@ -27,6 +27,7 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/go-try-get/pkg/gtg"
 	"github.com/spatialcurrent/railgun/pkg/catalog"

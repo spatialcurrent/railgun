@@ -9,6 +9,8 @@ package process
 
 import (
 	"github.com/pkg/errors"
+
+	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/railgun/pkg/cli/dfl"
 	"github.com/spatialcurrent/railgun/pkg/cli/input"
 	"github.com/spatialcurrent/railgun/pkg/cli/output"
@@ -17,17 +19,22 @@ import (
 
 // CheckProcessConfig checks the process configuration.
 func CheckProcessConfig(v *viper.Viper, args []string) error {
-	err := input.CheckInputConfig(v, args)
+	err := input.CheckInputConfig(v, gss.Formats)
 	if err != nil {
 		return errors.Wrap(err, "error with input configuration")
 	}
-	err = output.CheckOutputConfig(v, args)
+	err = output.CheckOutputConfig(v, gss.Formats)
 	if err != nil {
 		return errors.Wrap(err, "error with output configuration")
 	}
 	err = dfl.CheckDflConfig(v)
 	if err != nil {
 		return errors.Wrap(err, "error with dfl configuration")
+	}
+	inputFormat := v.GetString(FlagInputFormat)
+	stream := v.GetBool(FlagStream)
+	if inputFormat == "gob" && !stream {
+		return errors.New("input format \"gob\" requires streaming")
 	}
 	return nil
 }

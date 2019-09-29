@@ -70,6 +70,18 @@ imports: ## Update imports in Go source code
 vet: ## Vet Go source code
 	go vet $$(go list ./... )
 
+.PHONY: test_pkg
+test_pkg: ## Run Go tests
+	CGO_ENABLED=0 go test -count 1 github.com/spatialcurrent/railgun/pkg/...
+
+.PHONY: test_cmd
+test_cmd: ## Run Go tests
+	CGO_ENABLED=0 go test -count 1 github.com/spatialcurrent/railgun/cmd/...
+
+.PHONY: test_cli
+test_cli: ## Run Go tests
+	bash scripts/test-cli.sh
+
 .PHONY: test_go
 test_go: ## Run Go tests
 	CGO_ENABLED=0 bash scripts/test.sh
@@ -82,6 +94,9 @@ install:  ## Install railgun CLI on current platform
 #
 # Command line Programs
 #
+
+bin/railgun:
+	go build -o bin/railgun -gcflags="$(GCFLAGS)" -ldflags="$(LDFLAGS)" github.com/spatialcurrent/railgun/cmd/railgun
 
 bin/railgun_darwin_amd64:
 	GOOS=darwin GOARCH=amd64 go build -o bin/railgun_darwin_amd64 -gcflags="$(GCFLAGS)" -ldflags="$(LDFLAGS)" github.com/spatialcurrent/railgun/cmd/railgun

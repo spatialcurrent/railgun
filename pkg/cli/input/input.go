@@ -14,6 +14,7 @@ import (
 const (
 	FlagInputURI               string = "input-uri"
 	FlagInputCompression       string = "input-compression"
+	FlagInputDictionary        string = "input-dict"
 	FlagInputFormat            string = "input-format"
 	FlagInputType              string = "input-type"
 	FlagInputHeader            string = "input-header"

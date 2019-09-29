@@ -8,9 +8,6 @@
 package output
 
 import (
-	"strings"
-
-	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/pflag"
 )
@@ -18,8 +15,9 @@ import (
 // InitOutputFlags initializes the output flags.
 func InitOutputFlags(flag *pflag.FlagSet, defaultOutputFormat string) {
 	flag.StringP(FlagOutputURI, "o", "stdout", "the output uri (a dfl expression itself)")
-	flag.StringP(FlagOutputCompression, "", "", "the output compression algorithm, one of: "+strings.Join(grw.Algorithms, ", "))
-	flag.String(FlagOutputFormat, defaultOutputFormat, "the output format, one of: "+strings.Join(gss.Formats, ", "))
+	flag.String(FlagOutputCompression, "", "the output compression algorithm")
+	flag.String(FlagOutputFormat, defaultOutputFormat, "the output format")
+	flag.String(FlagOutputFormatSpecifier, "", "The output format specifier")
 	flag.Bool(FlagOutputFit, false, "fit output")
 	flag.BoolP(FlagOutputPretty, "p", false, "output pretty format")
 	flag.StringSliceP(FlagOutputHeader, "", []string{}, "the output header")

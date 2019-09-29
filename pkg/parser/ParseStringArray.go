@@ -9,6 +9,7 @@ package parser
 
 import (
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-adaptive-functions/pkg/af"
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-try-get/pkg/gtg"

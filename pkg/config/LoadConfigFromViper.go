@@ -40,6 +40,8 @@ func LoadConfigFromViper(c interface{}, v *viper.Viper) {
 				case reflect.Slice:
 					if fieldType.Elem().Kind() == reflect.String {
 						fieldValue.Set(reflect.ValueOf(v.GetStringSlice(key)))
+					} else if fieldType.Elem().Kind() == reflect.Uint8 {
+						fieldValue.Set(reflect.ValueOf([]byte(v.GetString(key))))
 					}
 				default:
 					if fieldType.Name() == "Duration" {

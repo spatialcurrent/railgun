@@ -14,10 +14,11 @@ import (
 // NewCommand returns a new instance of the process command.
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   CliUse,
-		Short: CliShort,
-		Long:  CliLong,
-		RunE:  processFunction,
+		Use:          CliUse,
+		Short:        CliShort,
+		Long:         CliLong,
+		RunE:         processFunction,
+		SilenceUsage: SilenceUsage,
 	}
 	InitProcessFlags(cmd.Flags())
 	return cmd

@@ -25,6 +25,7 @@ import (
 type Output struct {
 	Uri               string        `viper:"output-uri" map:"Uri"`
 	Format            string        `viper:"output-format" map:"Format"`
+	FormatSpecifier   string        `viper:"output-format-specifier" map:"Format"`
 	Header            []interface{} `viper:"output-header" map:"Header"`
 	Comment           string        `viper:"output-comment" map:"Comment"`
 	LazyQuotes        bool          `viper:"output-lazy-quotes" map:"LazyQuotes"`
@@ -32,9 +33,11 @@ type Output struct {
 	Overwrite         bool          `viper:"output-overwrite" map:"Overwrite"`
 	BufferMemory      bool          `viper:"output-buffer-memory" map:"BufferMemory"`
 	Compression       string        `viper:"output-compression" map:"Compression"`
+	Dictionary        []byte        `viper:"output-dict" map:"Dictionary"`
 	Passphrase        string        `viper:"output-passphrase" map:"Passphrase"`
 	Salt              string        `viper:"output-salt" map:"Salt"`
 	Limit             int           `viper:"output-limit" map:"Limit"`
+	Fit               bool          `viper:"output-fit" map:"Fit"`
 	Pretty            bool          `viper:"output-pretty" map:"Pretty"`
 	Mkdirs            bool          `viper:"output-mkdirs" map:"Mkdirs"`
 	Decimal           bool          `viper:"output-decimal" map:"Decimal"`
@@ -61,7 +64,7 @@ func (o Output) CanStream() bool {
 	}
 
 	switch o.Format {
-	case serializer.FormatCSV, serializer.FormatTSV, serializer.FormatJSONL:
+	case serializer.FormatCSV, serializer.FormatFmt, serializer.FormatGo, serializer.FormatGob, serializer.FormatJSONL, serializer.FormatTags, serializer.FormatTSV:
 		return true
 	}
 

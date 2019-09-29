@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 )
 

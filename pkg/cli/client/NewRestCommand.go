@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/cobra"
 	"github.com/spatialcurrent/railgun/pkg/cli/logging"
 	"github.com/spatialcurrent/railgun/pkg/config"

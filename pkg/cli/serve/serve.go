@@ -22,7 +22,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/cobra"
+	"github.com/spatialcurrent/go-simple-serializer/pkg/gob"
 	"github.com/spatialcurrent/go-sync-logger/pkg/gsl"
 	"github.com/spatialcurrent/railgun/pkg/catalog"
 	"github.com/spatialcurrent/railgun/pkg/cli/input"
@@ -124,6 +126,9 @@ func newRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, logger *g
 
 func serveFunction(gitBranch string, gitCommit string) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
+
+		// Register gob types
+		gob.RegisterTypes()
 
 		v := viper.New()
 

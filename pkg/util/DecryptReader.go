@@ -9,6 +9,7 @@ package util
 
 import (
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 )
 

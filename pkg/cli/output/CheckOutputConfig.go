@@ -9,6 +9,7 @@ package output
 
 import (
 	"github.com/pkg/errors"
+
 	"github.com/spatialcurrent/viper"
 )
 
