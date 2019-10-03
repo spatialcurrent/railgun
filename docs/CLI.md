@@ -1,19 +1,72 @@
 # CLI
 
-## Usage
+- [Usage](#usage) - basic usage
+- [Algorithms](#algorithms) - list of supported compression algorithms
+- [Formats](#formats) - list of supported file formats
+- [Platforms](#platforms) - list of supported platforms
+- [Releases](#releases) - where to find an executable
+- [Examples](#examples)  - detailed usage exampels
+- [Building](#building) - how to build the CLI
+- [Testing](#testing) - test the CLI
+- [Troubleshooting](#Troubleshooting) - how to troubleshoot common errors
 
-**CLI**
+## Usage
 
 The command line tool, `railgun`, can be used to easily covert data between file formats and compression algorithms.
 
-- Platforms - list of supported platforms
-- Releases - where to find an executable
-- Examples - detailed usage exampels
-- Building - how to build the CLI
-- Testing - test the CLI
-- Troubleshooting - how to troubleshoot common errors
+To launch the http serve use the `serve` command.
 
-See the [examples](#examples) section below for usage.
+```shell
+railgun serve [flags]
+```
+
+To process data use the `process` command.
+
+
+```shell
+railgun process [flags]
+```
+
+For more information use the help flag.
+
+```shell
+railgun --help
+```
+
+## Algorithms
+
+The following compression algorithms are supported.  Pull requests to support other compression algorithms are welcome!
+
+| Algorithm | Read |  Write | Stream | Description |
+| ---- | ------ | ------ | ------ | ------ |
+| bzip2 | ✓ | - | ✓ | [bzip2](https://en.wikipedia.org/wiki/Bzip2) |
+| flate | ✓ | ✓ | ✓ | [DEFLATE Compressed Data Format](https://tools.ietf.org/html/rfc1951) |
+| gzip | ✓ | ✓ | ✓ | [gzip](https://en.wikipedia.org/wiki/Gzip) |
+| snappy | ✓ | ✓ | ✓ | [snappy](https://github.com/google/snappy) |
+| zip | ✓ | - | - | [zip](https://en.wikipedia.org/wiki/Zip_%28file_format%29) |
+| zlib | ✓ | ✓ | ✓ | [zlib](https://en.wikipedia.org/wiki/Zlib) |
+
+
+## Formats
+
+The following file formats are supported.  Pull requests to support other formats are welcome!
+
+| Format | Read |  Write | Stream | Description |
+| ---- | ------ |  ------ | ------ | ------ |
+| bson | ✓ | ✓ | - | [Binary JSON](https://en.wikipedia.org/wiki/BSON) |
+| csv | ✓ | ✓ | ✓ | [Comma-Separated Values](https://en.wikipedia.org/wiki/Comma-separated_values) |
+| fmt | - | ✓ | ✓ | [fmt](https://godoc.org/fmt) |
+| go | - | ✓ | ✓ | Go (format specifier: "%#v") |
+| gob | ✓ | ✓ | ✓ | [gob](https://godoc.org/encoding/gob) |
+| hcl | ✓ | - | - | [HashiCorp Configuration Language](https://github.com/hashicorp/hcl) |
+| json | ✓ | ✓ | - | [JSON](http://json.org/) |
+| jsonl | ✓ | ✓ | ✓ | [JSON Lines](http://jsonlines.org/) |
+| properties | ✓ | ✓ | - |[Properties](https://en.wikipedia.org/wiki/.properties) |
+| tags | ✓ | ✓ | ✓ | single-line series of key=value tags |
+| toml | ✓ | ✓ | - | [TOML](https://github.com/toml-lang/toml) |
+| tsv | ✓ | ✓ | ✓ |[ Tab-Separated Values](https://en.wikipedia.org/wiki/Tab-separated_values) |
+| yaml | ✓ | ✓ | - | [YAML](https://yaml.org/) |
+
 
 ## Platforms
 
@@ -38,15 +91,12 @@ The following platforms are supported.  Pull requests to support other platforms
 
 - `railgun_linux_amd64` - CLI for Linux on amd64
 - `railgun_linux_amd64` - CLI for Linux on arm64
-- `railgun_linux_amd64.h`, `railgun_linuxamd64.so` - Shared Object for Linux on amd64
-- `railgun_linux_armv7.h`, `railgun_linux_armv7.so` - Shared Object for Linux on ARMv7
-- `railgun_linux_armv8.h`, `railgun_linux_armv8.so` - Shared Object for Linux on ARMv8
 
 **Windows**
 
 - `railgun_windows_amd64.exe` - CLI for Windows on amd64
 
-# Examples
+## Examples
 
 **Search for Cuisine**
 
@@ -64,7 +114,7 @@ read -s -p 'Password: ' password && echo && railgun_linux_amd64 -input_uri secre
 read -s -p 'Password: ' password && echo && railgun_linux_amd64 -input_uri secrets.yml.enc -input_passphrase $password -output_format json
 ```
 
-# Building
+## Building
 
 Use `make build_cli` to build executables for Linux and Windows.
 
