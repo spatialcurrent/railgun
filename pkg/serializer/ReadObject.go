@@ -5,5 +5,4 @@
 //
 // =================================================================
 
-// Package cli includes the root CLI command which adds the sub commands.
-package cli
+package serializer

@@ -5,5 +5,17 @@
 //
 // =================================================================
 
-// Package cli includes the root CLI command which adds the sub commands.
-package cli
+package catalog
+
+import (
+	"fmt"
+	"strings"
+)
+
+type ErrMissingCatalogFormat struct {
+	Expected []string
+}
+
+func (e *ErrMissingCatalogFormat) Error() string {
+	return fmt.Sprintf("missing catalog format, expecting on of %s", strings.Join(e.Expected, ", "))
+}

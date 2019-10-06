@@ -16,6 +16,7 @@ import (
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/railgun/pkg/cli/algorithms"
+	"github.com/spatialcurrent/railgun/pkg/cli/catalog"
 	"github.com/spatialcurrent/railgun/pkg/cli/client"
 	"github.com/spatialcurrent/railgun/pkg/cli/formats"
 	"github.com/spatialcurrent/railgun/pkg/cli/process"
@@ -23,7 +24,25 @@ import (
 	"github.com/spatialcurrent/railgun/pkg/cli/version"
 )
 
+// Execute handles command line calls to railgun.
 func Execute(gitBranch string, gitCommit string) error {
+
+	//
+	// Root Command
+	//
+
+	var rootCmd = &cobra.Command{
+		Use:   "railgun",
+		Short: "a simple and fast data processing tool",
+		Long: `Railgun is a simple and fast data processing tool.
+Through go-reader-writer, supports the follow compression algorithms: ` + strings.Join(grw.Algorithms, ", ") + `
+Through go-simple-serializer, supports the follow file formats: ` + strings.Join(gss.Formats, ", "),
+	}
+	InitRootFlags(rootCmd.PersistentFlags())
+
+	//
+	// Completion Command
+	//
 
 	completionCommandLong := ""
 	if _, err := os.Stat("/etc/bash_completion.d/"); !os.IsNotExist(err) {
@@ -35,15 +54,6 @@ func Execute(gitBranch string, gitCommit string) error {
 			completionCommandLong = "To install completion scripts run:\nrailgun completion > .../bash_completion.d/railgun"
 		}
 	}
-
-	var rootCmd = &cobra.Command{
-		Use:   "railgun",
-		Short: "a simple and fast data processing tool",
-		Long: `Railgun is a simple and fast data processing tool.
-Through go-reader-writer, supports the follow compression algorithms: ` + strings.Join(grw.Algorithms, ", ") + `
-Through go-simple-serializer, supports the follow file formats: ` + strings.Join(gss.Formats, ", "),
-	}
-	InitRootFlags(rootCmd.PersistentFlags())
 
 	rootCmd.AddCommand(func() *cobra.Command {
 		return &cobra.Command{
@@ -61,16 +71,43 @@ Through go-simple-serializer, supports the follow file formats: ` + strings.Join
 		GitCommit: gitCommit,
 	}))
 
+	//
+	// Process Command
+	//
+
 	rootCmd.AddCommand(process.NewCommand())
+
+	//
+	// Serve Command
+	//
 
 	rootCmd.AddCommand(serve.NewCommand(&serve.NewCommandInput{
 		GitBranch: gitBranch,
 		GitCommit: gitCommit,
 	}))
 
+	//
+	// Catalog Command
+	//
+
+	rootCmd.AddCommand(catalog.NewCommand())
+
+	//
+	// Client Command
+	//
+
 	rootCmd.AddCommand(client.NewCommand())
 
+	//
+	// Algorithms Command
+	//
+
 	rootCmd.AddCommand(algorithms.NewCommand())
+
+	//
+	// Formats Command
+	//
+
 	rootCmd.AddCommand(formats.NewCommand())
 
 	return rootCmd.Execute()

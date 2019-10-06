@@ -5,16 +5,16 @@
 //
 // =================================================================
 
-package cli
+package runtime
 
 import (
 	"fmt"
 )
 
-type ErrInvalidKeyValueSeparator struct {
-	Value string
+type ErrInvalidMaxProcs struct {
+	Value int
 }
 
-func (e *ErrInvalidKeyValueSeparator) Error() string {
-	return fmt.Sprintf("invalid key-value separator %q", e.Value)
+func (e *ErrInvalidMaxProcs) Error() string {
+	return fmt.Sprintf("invalid max procs %d, must be greater than or equal to 0", e.Value)
 }

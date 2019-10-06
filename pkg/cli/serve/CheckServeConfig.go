@@ -13,13 +13,18 @@ import (
 	"github.com/spatialcurrent/railgun/pkg/cli/http"
 	"github.com/spatialcurrent/railgun/pkg/cli/jwt"
 	"github.com/spatialcurrent/railgun/pkg/cli/logging"
+	"github.com/spatialcurrent/railgun/pkg/cli/runtime"
 	"github.com/spatialcurrent/railgun/pkg/cli/swagger"
 	"github.com/spatialcurrent/viper"
 )
 
 // CheckServeConfig checks the serve configuration.
 func CheckServeConfig(v *viper.Viper, args []string) error {
-	err := http.CheckHttpConfig(v)
+	err := runtime.CheckRuntimeConfig(v)
+	if err != nil {
+		return errors.Wrap(err, "error with runtime configuration")
+	}
+	err = http.CheckHttpConfig(v)
 	if err != nil {
 		return errors.Wrap(err, "error with http configuration")
 	}

@@ -22,7 +22,7 @@ var gitCommit string
 func main() {
 	err := cli.Execute(gitBranch, gitCommit)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		fmt.Fprintf(os.Stderr, "railgun: %s\n", err.Error())
 		os.Exit(1)
 	}
 }

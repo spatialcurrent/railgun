@@ -5,16 +5,18 @@
 //
 // =================================================================
 
-package cli
+package catalog
 
 import (
 	"fmt"
+	"strings"
 )
 
-type ErrInvalidLineSeparator struct {
-	Value string
+type ErrInvalidCatalogFormat struct {
+	Value    string
+	Expected []string
 }
 
-func (e *ErrInvalidLineSeparator) Error() string {
-	return fmt.Sprintf("invalid line separator %q", e.Value)
+func (e *ErrInvalidCatalogFormat) Error() string {
+	return fmt.Sprintf("invalid catalog format %q, expecting on of %s", e.Value, strings.Join(e.Expected, ", "))
 }

@@ -10,13 +10,9 @@ package catalog
 import (
 	"context"
 	"reflect"
-)
 
-import (
 	"github.com/spatialcurrent/go-sync-catalog/gsc"
-)
 
-import (
 	"github.com/spatialcurrent/railgun/pkg/core"
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 )
@@ -39,14 +35,14 @@ func (c *Catalog) Get(name string, t reflect.Type) (core.Base, bool) {
 }
 
 func (c *Catalog) Add(obj interface{}) error {
-	if n, ok := obj.(core.Named); ok {
+	if n, ok := obj.(interface{ GetName() string }); ok {
 		return c.Catalog.Add(n.GetName(), obj)
 	}
 	return &rerrors.ErrMissingMethod{Type: reflect.TypeOf(obj).Elem().Name(), Method: "GetName() string"}
 }
 
 func (c *Catalog) Update(obj interface{}) error {
-	if n, ok := obj.(core.Named); ok {
+	if n, ok := obj.(interface{ GetName() string }); ok {
 		return c.Catalog.Update(n.GetName(), obj)
 	}
 	return &rerrors.ErrMissingObject{Type: reflect.TypeOf(obj).Elem().Name(), Name: "unknown"}

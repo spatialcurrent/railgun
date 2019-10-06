@@ -5,17 +5,18 @@
 //
 // =================================================================
 
-package runtime
+package catalog
 
 import (
-	"github.com/spatialcurrent/viper"
+	"fmt"
+	"strings"
 )
 
-// CheckRuntimeConfig checks the Runtime configuration.
-func CheckRuntimeConfig(v *viper.Viper) error {
-	procs := v.GetInt(FlagRuntimeMaxProcs)
-	if procs < 0 {
-		return &ErrInvalidMaxProcs{Value: procs}
-	}
-	return nil
+type ErrInvalidCatalogCompression struct {
+	Value    string
+	Expected []string
+}
+
+func (e *ErrInvalidCatalogCompression) Error() string {
+	return fmt.Sprintf("invalid catalog compression %q, expecting on of %s", e.Value, strings.Join(e.Expected, ", "))
 }

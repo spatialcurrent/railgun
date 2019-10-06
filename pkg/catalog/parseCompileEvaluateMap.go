@@ -5,5 +5,13 @@
 //
 // =================================================================
 
-// Package cli includes the root CLI command which adds the sub commands.
-package cli
+package catalog
+
+import (
+	"github.com/spatialcurrent/go-dfl/pkg/dfl"
+)
+
+func parseCompileEvaluateMap(str string) (interface{}, error) {
+	vars, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	return m, err
+}

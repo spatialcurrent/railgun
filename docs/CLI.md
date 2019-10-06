@@ -20,7 +20,7 @@ To launch the http serve use the `serve` command.
 railgun serve [flags]
 ```
 
-To process data use the `process` command.
+To process data from the command line use the `process` command.  The `process` command supports many flags.
 
 
 ```shell

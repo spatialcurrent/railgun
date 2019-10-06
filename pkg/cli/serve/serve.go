@@ -9,30 +9,26 @@ package serve
 
 import (
 	"context"
-	"crypto/rsa"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3"
-	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 
 	"github.com/spatialcurrent/cobra"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gob"
-	"github.com/spatialcurrent/go-sync-logger/pkg/gsl"
 	"github.com/spatialcurrent/railgun/pkg/catalog"
 	"github.com/spatialcurrent/railgun/pkg/cli/input"
 	"github.com/spatialcurrent/railgun/pkg/cli/logging"
+	"github.com/spatialcurrent/railgun/pkg/cli/runtime"
 	"github.com/spatialcurrent/railgun/pkg/config"
 	"github.com/spatialcurrent/railgun/pkg/jwt"
 	"github.com/spatialcurrent/railgun/pkg/request"
-	"github.com/spatialcurrent/railgun/pkg/router"
 	"github.com/spatialcurrent/railgun/pkg/util"
 	"github.com/spatialcurrent/viper"
 )
@@ -74,61 +70,15 @@ const (
 
 var emptyFeatureCollection = []byte("{\"type\":\"FeatureCollection\",\"features\":[]}")
 
-func newRouter(v *viper.Viper, railgunCatalog *catalog.RailgunCatalog, logger *gsl.Logger, publicKey *rsa.PublicKey, privateKey *rsa.PrivateKey, validMethods []string, errorsChannel chan interface{}, requests chan request.Request, messages chan interface{}, gitBranch string, gitCommit string, verbose bool) (*router.RailgunRouter, error) {
-
-	go func(requests chan request.Request, logRequestsTile bool, logRequestsCache bool) {
-		for r := range requests {
-			switch r.(type) {
-			case *request.TileRequest:
-				if logRequestsTile {
-					messages <- r
-				}
-			case *request.CacheRequest:
-				if logRequestsCache {
-					messages <- r
-				}
-			}
-		}
-	}(requests, v.GetBool("log-requests-tile"), v.GetBool("log-requests-cache"))
-
-	errorDestination := v.GetString("error-destination")
-	infoDestination := v.GetString("info-destination")
-
-	if errorDestination == infoDestination {
-		go func(errorsChannel chan interface{}) {
-			for err := range errorsChannel {
-				messages <- err
-			}
-		}(errorsChannel)
-	} else {
-		logger.ListenError(errorsChannel, nil)
-	}
-
-	awsSessionCache := gocache.New(5*time.Minute, 10*time.Minute)
-
-	r := router.NewRailgunRouter(&router.NewRailgunRouterInput{
-		Viper:           v,
-		RailgunCatalog:  railgunCatalog,
-		Requests:        requests,
-		Messages:        messages,
-		ErrorsChannel:   errorsChannel,
-		AwsSessionCache: awsSessionCache,
-		PublicKey:       publicKey,
-		PrivateKey:      privateKey,
-		ValidMethods:    validMethods,
-		GitBranch:       gitBranch,
-		GitCommit:       gitCommit,
-		Logger:          logger,
-	})
-
-	return r, nil
-}
-
 func serveFunction(gitBranch string, gitCommit string) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 
 		// Register gob types
 		gob.RegisterTypes()
+
+		//
+		// Viper
+		//
 
 		v := viper.New()
 
@@ -146,22 +96,34 @@ func serveFunction(gitBranch string, gitCommit string) func(cmd *cobra.Command, 
 			config.PrintViperSettings(v)
 		}
 
+		//
+		// Check Configuration
+		//
+
 		err = CheckServeConfig(v, args)
 		if err != nil {
 			return errors.Wrap(err, "error with configuration")
 		}
 
-		// Runtime Flags
-		runtimeMaxProcs := v.GetInt("runtime-max-procs")
+		//
+		// Runtime
+		//
+
+		runtimeMaxProcs := v.GetInt(runtime.FlagRuntimeMaxProcs)
+
 		if runtimeMaxProcs == 0 {
+			// 0 indicates that the number of max procs should be set to the number of cpus.
 			runtimeMaxProcs = runtime.NumCPU()
-		} else if runtimeMaxProcs < 0 {
-			panic(errors.New("runtime-max-procs cannot be less than 1"))
 		}
+
 		fmt.Println(fmt.Sprintf("Maximum number of parallel procsses set to %d", runtimeMaxProcs))
+
 		runtime.GOMAXPROCS(runtimeMaxProcs)
 
-		// HTTP Flags
+		//
+		// HTTP
+		//
+
 		address := v.GetString("http-address")
 		httpTimeoutIdle := v.GetDuration("http-timeout-idle")
 		httpTimeoutRead := v.GetDuration("http-timeout-read")
@@ -170,7 +132,10 @@ func serveFunction(gitBranch string, gitCommit string) func(cmd *cobra.Command, 
 		//logRequestsTile := v.GetBool("log-requests-tile")
 		//logRequestsCache := v.GetBool("log-requests-cache")
 
-		// AWS Flags
+		//
+		// AWS
+		//
+
 		awsDefaultRegion := v.GetString("aws-default-region")
 		awsAccessKeyId := v.GetString("aws-access-key-id")
 		awsSecretAccessKey := v.GetString("aws-secret-access-key")
@@ -178,7 +143,7 @@ func serveFunction(gitBranch string, gitCommit string) func(cmd *cobra.Command, 
 		//awsContainerCredentialsRelativeUri := v.GetString("aws-container-credentials-relative-uri")
 
 		// Catalog Flags
-		catalogUri := v.GetString("catalog-uri")
+		catalogUri := v.GetString(FlagCatalogUri)
 
 		// Security Flags
 		publicKeyUri := v.GetString("jwt-public-key-uri")
@@ -197,6 +162,10 @@ func serveFunction(gitBranch string, gitCommit string) func(cmd *cobra.Command, 
 
 		logger := logging.NewLoggerFromViper(v)
 
+		//
+		// Catalog
+		//
+
 		railgunCatalog := catalog.NewRailgunCatalog()
 
 		err = railgunCatalog.LoadFromViper(v)
@@ -214,6 +183,10 @@ func serveFunction(gitBranch string, gitCommit string) func(cmd *cobra.Command, 
 			}
 		}
 
+		//
+		// JWT
+		//
+
 		publicKey, err := jwt.LoadPublicKey(v.GetString("jwt-public-key"), publicKeyUri, s3Client)
 		if err != nil {
 			logger.Fatal(errors.Wrap(err, "error initializing public key"))
@@ -227,19 +200,24 @@ func serveFunction(gitBranch string, gitCommit string) func(cmd *cobra.Command, 
 		errorsChannel := make(chan interface{}, 10000)
 		requests := make(chan request.Request, 10000)
 
-		handler, err := newRouter(
-			v,
-			railgunCatalog,
-			logger,
-			publicKey,
-			privateKey,
-			v.GetStringSlice("jwt-valid-methods"),
-			errorsChannel,
-			requests,
-			messages,
-			gitBranch,
-			gitCommit,
-			verbose)
+		//
+		// Router
+		//
+
+		handler, err := NewRouter(&NewRouterInput{
+			Viper:          v,
+			RailgunCatalog: railgunCatalog,
+			Logger:         logger,
+			PublicKey:      publicKey,
+			PrivateKey:     privateKey,
+			ValidMethods:   v.GetStringSlice("jwt-valid-methods"),
+			ErrorsChannel:  errorsChannel,
+			Requests:       requests,
+			Messages:       messages,
+			GitBranch:      gitBranch,
+			GitCommit:      gitCommit,
+			Verbose:        verbose,
+		})
 		if err != nil {
 			logger.Fatal(errors.Wrap(err, "error creating new router"))
 		}
