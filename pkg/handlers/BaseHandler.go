@@ -15,22 +15,23 @@ import (
 	"reflect"
 	"strings"
 	"time"
-)
 
-import (
 	"github.com/alecthomas/chroma"
 	"github.com/alecthomas/chroma/formatters/html"
 	"github.com/alecthomas/chroma/lexers"
 	"github.com/alecthomas/chroma/styles"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+
 	jwt "github.com/dgrijalva/jwt-go"
+
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/go-try-get/pkg/gtg"
 	"github.com/spatialcurrent/railgun/pkg/catalog"
+
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/parser"
 	"github.com/spatialcurrent/railgun/pkg/request"

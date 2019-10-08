@@ -16,30 +16,22 @@ import (
 	"strings"
 	"sync"
 	"time"
-)
 
-import (
-	"golang.org/x/sync/errgroup"
-)
-
-import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
+	"golang.org/x/sync/errgroup"
+
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
-)
 
-import (
 	"github.com/spatialcurrent/go-adaptive-functions/pkg/af"
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
-)
 
-import (
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/middleware"
 	"github.com/spatialcurrent/railgun/pkg/request"

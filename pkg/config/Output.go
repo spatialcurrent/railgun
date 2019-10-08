@@ -10,15 +10,10 @@ package config
 import (
 	"reflect"
 	"strings"
-)
 
-import (
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/serializer"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
-)
-
-import (
 	"github.com/spatialcurrent/railgun/pkg/util"
 )
 

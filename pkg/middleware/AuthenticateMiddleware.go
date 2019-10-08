@@ -12,9 +12,7 @@ import (
 	"crypto/rsa"
 	"net/http"
 	"strings"
-)
 
-import (
 	jwt "github.com/dgrijalva/jwt-go"
 )
 

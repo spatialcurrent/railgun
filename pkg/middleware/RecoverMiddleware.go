@@ -10,9 +10,7 @@ package middleware
 import (
 	//"fmt"
 	"net/http"
-)
 
-import (
 	"github.com/spatialcurrent/go-sync-logger/pkg/gsl"
 )
 

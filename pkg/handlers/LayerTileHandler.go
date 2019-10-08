@@ -14,9 +14,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-)
 
-import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
@@ -25,6 +23,7 @@ import (
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 	"github.com/spatialcurrent/go-try-get/pkg/gtg"
 	"github.com/spatialcurrent/railgun/pkg/core"
+
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/geo"
 	"github.com/spatialcurrent/railgun/pkg/pipeline"

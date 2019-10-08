@@ -14,10 +14,9 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-)
 
-import (
 	"github.com/aws/aws-sdk-go/service/s3"
+
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"

@@ -12,6 +12,6 @@ import (
 )
 
 func parseCompileEvaluateMap(str string) (interface{}, error) {
-	vars, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
+	_, m, err := dfl.ParseCompileEvaluateMap(str, dfl.NoVars, dfl.NoContext, dfl.DefaultFunctionMap, dfl.DefaultQuotes)
 	return m, err
 }

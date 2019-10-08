@@ -15,10 +15,9 @@ import (
 	"reflect"
 	"strings"
 	"time"
-)
 
-import (
 	"github.com/NYTimes/gziphandler"
+
 	gocache "github.com/patrickmn/go-cache"
 
 	"github.com/spatialcurrent/go-adaptive-functions/pkg/af"

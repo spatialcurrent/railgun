@@ -11,14 +11,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"reflect"
-)
 
-import (
 	"github.com/pkg/errors"
-)
 
-import (
 	"github.com/spatialcurrent/go-try-get/pkg/gtg"
+
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/util"
 )

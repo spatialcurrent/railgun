@@ -11,9 +11,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
-)
 
-import (
 	"github.com/spatialcurrent/go-sync-logger/pkg/gsl"
 )
 

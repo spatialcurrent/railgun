@@ -11,9 +11,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-)
 
-import (
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 )
 

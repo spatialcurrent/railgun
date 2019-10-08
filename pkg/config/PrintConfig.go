@@ -10,13 +10,9 @@ package config
 import (
 	"fmt"
 	"os"
-)
 
-import (
 	"github.com/pkg/errors"
-)
 
-import (
 	"github.com/spatialcurrent/go-simple-serializer/pkg/yaml"
 )
 

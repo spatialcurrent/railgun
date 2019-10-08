@@ -10,11 +10,10 @@ package handlers
 import (
 	"net/http"
 	"strings"
-)
 
-import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gorilla/mux"
+
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
+
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/named"
 	"github.com/spatialcurrent/railgun/pkg/request"

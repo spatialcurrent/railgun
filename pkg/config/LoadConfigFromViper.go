@@ -9,9 +9,7 @@ package config
 
 import (
 	"reflect"
-)
 
-import (
 	"github.com/spatialcurrent/viper"
 )
 

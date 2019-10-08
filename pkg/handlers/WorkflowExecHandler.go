@@ -14,9 +14,7 @@ import (
 	"reflect"
 	"sync"
 	"time"
-)
 
-import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 
@@ -24,6 +22,7 @@ import (
 	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
+
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/middleware"
 	"github.com/spatialcurrent/railgun/pkg/util"

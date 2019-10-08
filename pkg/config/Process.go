@@ -11,9 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
-)
 
-import (
 	"github.com/aws/aws-sdk-go/aws/session"
 )
 

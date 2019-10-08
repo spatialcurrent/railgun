@@ -12,9 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-)
 
-import (
 	jwt "github.com/dgrijalva/jwt-go"
 )
 

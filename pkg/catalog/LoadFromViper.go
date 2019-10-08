@@ -8,35 +8,19 @@
 package catalog
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
-)
 
-import (
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
 
-	"github.com/spatialcurrent/viper"
-)
-
-import (
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
-	"github.com/spatialcurrent/go-reader-writer/pkg/grw"
 	"github.com/spatialcurrent/go-reader-writer/pkg/splitter"
-	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
-	"github.com/spatialcurrent/go-sync-logger/pkg/gsl"
-	"github.com/spatialcurrent/go-try-get/pkg/gtg"
-)
-
-import (
-	"github.com/spatialcurrent/railgun/pkg/cache"
 	"github.com/spatialcurrent/railgun/pkg/core"
+	"github.com/spatialcurrent/viper"
+
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
-	"github.com/spatialcurrent/railgun/pkg/parser"
 	"github.com/spatialcurrent/railgun/pkg/util"
 )
 

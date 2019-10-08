@@ -11,13 +11,9 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/http"
-)
 
-import (
 	"github.com/pkg/errors"
-)
 
-import (
 	"github.com/spatialcurrent/go-reader-writer/pkg/io"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/json"

@@ -14,14 +14,14 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-)
 
-import (
 	"github.com/aws/aws-sdk-go/service/s3"
+
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
 
 	"github.com/spatialcurrent/railgun/pkg/core"
+
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 	"github.com/spatialcurrent/railgun/pkg/middleware"
 	"github.com/spatialcurrent/railgun/pkg/request"

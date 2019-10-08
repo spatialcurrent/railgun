@@ -9,9 +9,7 @@ package core
 
 import (
 	"reflect"
-)
 
-import (
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 )
 

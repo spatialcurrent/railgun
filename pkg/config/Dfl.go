@@ -9,9 +9,7 @@ package config
 
 import (
 	"strings"
-)
 
-import (
 	"github.com/pkg/errors"
 
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"

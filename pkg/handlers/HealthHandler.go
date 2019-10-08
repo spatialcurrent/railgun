@@ -13,9 +13,7 @@ import (
 	"reflect"
 	"sync"
 	"time"
-)
 
-import (
 	"github.com/gorilla/mux"
 
 	"github.com/spatialcurrent/railgun/pkg/middleware"

@@ -10,19 +10,13 @@ package parser
 import (
 	"fmt"
 	"reflect"
-)
 
-import (
 	"github.com/pkg/errors"
-)
 
-import (
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-stringify/pkg/stringify"
 	"github.com/spatialcurrent/go-try-get/pkg/gtg"
-)
 
-import (
 	rerrors "github.com/spatialcurrent/railgun/pkg/errors"
 )
 

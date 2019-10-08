@@ -9,9 +9,7 @@ package athenaiterator
 
 import (
 	"io"
-)
 
-import (
 	"github.com/aws/aws-sdk-go/service/athena"
 	"github.com/pkg/errors"
 )

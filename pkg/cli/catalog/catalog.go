@@ -8,11 +8,13 @@
 package catalog
 
 import (
-	"github.com/pkg/errors"
-	"github.com/spatialcurrent/viper"
-	"github.com/spatialcurrent/cobra"
 	"strings"
-	"github.co/spatialcurrent/railgun/pkg/util"
+
+	"github.com/pkg/errors"
+	"github.com/spatialcurrent/railgun/pkg/util"
+
+	"github.com/spatialcurrent/cobra"
+	"github.com/spatialcurrent/viper"
 )
 
 const (
@@ -22,13 +24,13 @@ const (
 )
 
 const (
-	FlagCatalogUri = "catalog-uri"
-	FlagCatalogFormat = "catalog-format"
+	FlagCatalogUri         = "catalog-uri"
+	FlagCatalogFormat      = "catalog-format"
 	FlagCatalogCompression = "catalog-compression"
 )
 
 var (
-	ErrMissingCatalogUri = errors.New("missing catalog uri")
+	ErrMissingCatalogUri    = errors.New("missing catalog uri")
 	ErrMissingCatalogFormat = errors.New("missing catalog format")
 )
 

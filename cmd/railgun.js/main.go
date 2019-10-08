@@ -13,18 +13,11 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-)
 
-import (
-	"github.com/pkg/errors"
-)
-
-import (
 	"github.com/gopherjs/gopherjs/js"
+	"github.com/pkg/errors"
 	"honnef.co/go/js/console"
-)
 
-import (
 	"github.com/spatialcurrent/go-dfl/pkg/dfl"
 	"github.com/spatialcurrent/go-dfl/pkg/dfljs"
 	"github.com/spatialcurrent/go-simple-serializer/pkg/gss"

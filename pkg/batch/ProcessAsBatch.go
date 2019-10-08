@@ -21,6 +21,7 @@ import (
 	"github.com/spatialcurrent/go-sync-logger/pkg/gsl"
 
 	"github.com/spatialcurrent/railgun/pkg/config"
+	"github.com/spatialcurrent/railgun/pkg/serializer"
 )
 
 type ProcessAsBatchInput struct {
@@ -80,7 +81,13 @@ func ProcessAsBatch(input *ProcessAsBatchInput) error {
 		outputObject = inputObject
 	}
 
-	outputBytes, err := gss.SerializeBytes(&gss.SerializeBytesInput{
+	err = serializer.Serialize(&gss.SerializeInput{
+		Uri:               input.Config.Output.Uri,
+		Alg:               input.Config.Output.Compression,
+		Dict:              grw.NoDict,
+		Append:            input.Config.Output.Append,
+		Parents:           input.Config.Output.Parents,
+		S3Client:          input.S3Client,
 		Object:            outputObject,
 		Format:            input.Config.Output.Format,
 		FormatSpecifier:   input.Config.Output.FormatSpecifier,
@@ -100,35 +107,8 @@ func ProcessAsBatch(input *ProcessAsBatchInput) error {
 		EscapeColon:       input.Config.Output.EscapeColon,
 		ExpandHeader:      input.Config.Output.ExpandHeader,
 	})
-
 	if err != nil {
-		return errors.Wrap(err, "error evaluating filter")
-	}
-
-	outputWriter, err := grw.WriteToResource(&grw.WriteToResourceInput{
-		Uri:      input.Config.Output.Uri,
-		Alg:      input.Config.Output.Compression,
-		Dict:     grw.NoDict,
-		Append:   input.Config.Output.Append,
-		S3Client: input.S3Client,
-	})
-	if err != nil {
-		return errors.Wrap(err, "error opening output file")
-	}
-
-	_, err = outputWriter.Write(outputBytes)
-	if err != nil {
-		return errors.Wrap(err, "error writing to output file")
-	}
-
-	err = outputWriter.Flush()
-	if err != nil {
-		return errors.Wrap(err, "error flushing to output file")
-	}
-
-	err = outputWriter.Close()
-	if err != nil {
-		return errors.Wrap(err, "error writing to output file")
+		return errors.Wrapf(err, "error writing object to uri %q", input.Config.Output.Uri)
 	}
 
 	return nil
